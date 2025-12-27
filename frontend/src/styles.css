@@ -1,0 +1,43 @@
+@import "@angular/material/prebuilt-themes/indigo-pink.css";
+
+:root {
+  --bg-color: #f9fafb;
+  --text-color: #0f172a;
+  --muted-color: #475569;
+  --card-color: #ffffff;
+  --hero-bg: #0f172a;
+  --hero-text: #e2e8f0;
+  --hero-muted: #cbd5e1;
+  --toolbar-bg: #0f172a;
+  --toolbar-text: #e2e8f0;
+}
+
+.dark-mode {
+  --bg-color: #0b1220;
+  --text-color: #e2e8f0;
+  --muted-color: #94a3b8;
+  --card-color: #111827;
+  --hero-bg: #111827;
+  --hero-text: #e5e7eb;
+  --hero-muted: #cbd5e1;
+  --toolbar-bg: #0b1220;
+  --toolbar-text: #e2e8f0;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.mat-toolbar {
+  background: var(--toolbar-bg) !important;
+  color: var(--toolbar-text) !important;
+}
+
+.mat-mdc-card {
+  background: var(--card-color);
+  color: var(--text-color);
+}
+

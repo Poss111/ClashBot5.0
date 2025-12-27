@@ -1,0 +1,19 @@
+{
+  "name": "clashbot-services",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.515.0",
+    "@aws-sdk/lib-dynamodb": "^3.515.0",
+    "@aws-sdk/client-secrets-manager": "^3.515.0",
+    "@aws-sdk/client-sfn": "^3.515.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
+

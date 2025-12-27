@@ -1,0 +1,16 @@
+{
+  "name": "clashbot5",
+  "private": true,
+  "version": "0.0.1",
+  "workspaces": [
+    "infra",
+    "services",
+    "frontend"
+  ],
+  "scripts": {
+    "bootstrap": "cd infra && npm install",
+    "lint": "echo \"add linters\"",
+    "deploy:ui": "npm run build --workspace frontend && aws s3 sync frontend/dist/clashbot s3://$FRONTEND_BUCKET --delete"
+  }
+}
+

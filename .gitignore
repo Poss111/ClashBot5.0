@@ -1,0 +1,29 @@
+# Node / JS
+node_modules/
+npm-debug.log*
+package-lock.json
+
+# Build outputs
+dist/
+tmp/
+temp/
+.angular/
+.turbo/
+
+# CDK / AWS
+.cdk.staging/
+cdk.out/
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Logs
+*.log
+*.trace
+
+# Local env
+.env
+.env.local
+

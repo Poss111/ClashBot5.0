@@ -1,7 +1,9 @@
 import { SFNClient, StartExecutionCommand } from '@aws-sdk/client-sfn';
+import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { logInfo, logError } from '../shared/logger';
 
 const sfnClient = new SFNClient({});
+const lambdaClient = new LambdaClient({});
 
 export const handler = async (event: any) => {
   const body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body ?? {};
@@ -27,6 +29,30 @@ export const handler = async (event: any) => {
       tournamentId,
       executionArn: resp.executionArn
     });
+
+    // Broadcast workflow started event
+    if (process.env.BROADCAST_FUNCTION_NAME) {
+      try {
+        await lambdaClient.send(
+          new InvokeCommand({
+            FunctionName: process.env.BROADCAST_FUNCTION_NAME,
+            InvocationType: 'Event',
+            Payload: JSON.stringify({
+              type: 'workflow.started',
+              tournamentId,
+              data: {
+                tournamentId,
+                executionArn: resp.executionArn
+              }
+            })
+          })
+        );
+      } catch (err) {
+        // Don't fail if broadcast fails
+        logError('startAssignmentWorkflow.broadcastFailed', { tournamentId, error: String(err) });
+      }
+    }
+
     return {
       statusCode: 202,
       body: JSON.stringify({ executionArn: resp.executionArn, tournamentId })

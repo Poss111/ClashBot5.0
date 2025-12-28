@@ -4,13 +4,11 @@
   "version": "0.0.1",
   "workspaces": [
     "infra",
-    "services",
-    "frontend"
+    "services"
   ],
   "scripts": {
     "bootstrap": "cd infra && npm install",
     "lint": "echo \"add linters\"",
-    "deploy:ui": "npm run build --workspace frontend && aws s3 sync frontend/dist/clashbot s3://$FRONTEND_BUCKET --delete"
+    "deploy:ui": "cd frontend && flutter build web && aws s3 sync frontend/build/web s3://$FRONTEND_BUCKET --delete"
   }
 }
-

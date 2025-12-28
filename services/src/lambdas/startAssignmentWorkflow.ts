@@ -7,22 +7,35 @@ const lambdaClient = new LambdaClient({});
 
 export const handler = async (event: any) => {
   const body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body ?? {};
-  const tournamentId = body.tournamentId ?? event.tournamentId;
+  const tournamentId = body.tournamentId ?? event.pathParameters?.id ?? event.tournamentId;
+  const causedBy =
+    event.requestContext?.authorizer?.principalId ??
+    body.causedBy ??
+    'unknown';
 
   if (!process.env.STATE_MACHINE_ARN) {
     throw new Error('STATE_MACHINE_ARN not configured');
   }
   if (!tournamentId) {
-    return { statusCode: 400, body: JSON.stringify({ message: 'tournamentId required' }) };
+    return {
+      statusCode: 400,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': '*',
+        'Access-Control-Allow-Methods': '*'
+      },
+      body: JSON.stringify({ message: 'tournamentId required' })
+    };
   }
 
   const input = JSON.stringify({ tournamentId });
+  const enrichedInput = JSON.stringify({ tournamentId, causedBy });
 
   try {
     const resp = await sfnClient.send(
       new StartExecutionCommand({
         stateMachineArn: process.env.STATE_MACHINE_ARN,
-        input
+        input: enrichedInput
       })
     );
     logInfo('startAssignmentWorkflow.started', {
@@ -55,11 +68,24 @@ export const handler = async (event: any) => {
 
     return {
       statusCode: 202,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': '*',
+        'Access-Control-Allow-Methods': '*'
+      },
       body: JSON.stringify({ executionArn: resp.executionArn, tournamentId })
     };
   } catch (err) {
     logError('startAssignmentWorkflow.failed', { tournamentId, error: String(err) });
-    return { statusCode: 500, body: JSON.stringify({ message: 'Failed to start workflow' }) };
+    return {
+      statusCode: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': '*',
+        'Access-Control-Allow-Methods': '*'
+      },
+      body: JSON.stringify({ message: 'Failed to start workflow' })
+    };
   }
 
 };

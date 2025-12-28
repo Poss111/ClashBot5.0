@@ -3,7 +3,9 @@ import 'package:go_router/go_router.dart';
 import '../services/api_config.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  final String? effectiveRole;
+  final bool navEnabled;
+  const HomeScreen({super.key, this.effectiveRole, this.navEnabled = true});
 
   @override
   Widget build(BuildContext context) {
@@ -62,28 +64,25 @@ class HomeScreen extends StatelessWidget {
             runSpacing: 12,
             children: [
               ElevatedButton(
-                onPressed: () => context.go('/tournaments'),
+                onPressed: navEnabled ? () => context.go('/tournaments') : null,
                 child: const Text('View tournaments'),
               ),
               OutlinedButton(
-                onPressed: () {
-                  // TODO: Open Riot API docs in browser
-                },
+                onPressed: navEnabled
+                    ? () {
+                        // TODO: Open Riot API docs in browser
+                      }
+                    : null,
                 child: const Text('Riot API docs'),
               ),
-              OutlinedButton(
-                onPressed: () => context.go('/websocket-test'),
-                child: const Text('WebSocket Test'),
-              ),
+              if ((effectiveRole ?? '') == 'ADMIN')
+                OutlinedButton(
+                  onPressed: navEnabled ? () => context.go('/websocket-test') : null,
+                  child: const Text('WebSocket Test'),
+                ),
             ],
           ),
           const SizedBox(height: 16),
-          Text(
-            'API base: ${ApiConfig.baseUrl}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: const Color(0xFF94A3B8),
-            ),
-          ),
         ],
       ),
     );

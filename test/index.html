@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ClashBot Test Harness</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        margin: 0;
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 1.5rem;
+      }
+      .card {
+        background: #111827;
+        border: 1px solid #1f2937;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+      h1 {
+        margin-top: 0;
+        margin-bottom: 1rem;
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        margin-bottom: 0.75rem;
+      }
+      input,
+      textarea {
+        padding: 0.5rem;
+        border-radius: 6px;
+        border: 1px solid #1f2937;
+        background: #0b1220;
+        color: #e2e8f0;
+      }
+      button {
+        padding: 0.6rem 0.9rem;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        background: #2563eb;
+        color: #fff;
+        font-weight: 600;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 1rem;
+      }
+      .log {
+        white-space: pre-wrap;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+        background: #0b1220;
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid #1f2937;
+        min-height: 120px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ClashBot Test Harness</h1>
+
+    <div class="card">
+      <label>
+        API Base URL
+        <input id="apiBase" placeholder="http://localhost:4566/restapis/<id>/prod/_user_request_" />
+      </label>
+    </div>
+
+    <div class="row">
+      <div class="card">
+        <h3>Create tournament</h3>
+        <label>
+          Tournament ID
+          <input id="createId" placeholder="e.g. clash-test-1" />
+        </label>
+        <label>
+          Theme ID
+          <input id="themeId" placeholder="1" />
+        </label>
+        <label>
+          Name Key
+          <input id="nameKey" placeholder="wolfcup" />
+        </label>
+        <label>
+          Name Key Secondary
+          <input id="nameKeySecondary" placeholder="Wolf Cup" />
+        </label>
+        <label>
+          Registration Time
+          <input id="regTime" type="datetime-local" />
+        </label>
+        <label>
+          Start Time
+          <input id="startTime" type="datetime-local" />
+        </label>
+        <label>
+          Region
+          <input id="createRegion" placeholder="NA1" />
+        </label>
+        <button onclick="createTournament()">Create</button>
+      </div>
+
+      <div class="card">
+        <h3>Register player</h3>
+        <label>
+          Tournament ID
+          <input id="regTournamentId" placeholder="clash-test-1" />
+        </label>
+        <label>
+          Player ID
+          <input id="playerId" placeholder="player-123" />
+        </label>
+        <label>
+          Preferred roles (comma)
+          <input id="roles" placeholder="top, jungle" />
+        </label>
+        <button onclick="registerPlayer()">Register</button>
+      </div>
+
+      <div class="card">
+        <h3>Start assignment</h3>
+        <label>
+          Tournament ID
+          <input id="assignTournamentId" placeholder="clash-test-1" />
+        </label>
+        <button onclick="startAssignment()">Start workflow</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Log</h3>
+      <div id="log" class="log"></div>
+    </div>
+
+    <script>
+      const logEl = document.getElementById('log');
+      const apiInput = document.getElementById('apiBase');
+
+      function log(msg, obj) {
+        const time = new Date().toISOString();
+        logEl.textContent =
+          `[${time}] ${msg}\n` + (obj ? JSON.stringify(obj, null, 2) + '\n' : '') + logEl.textContent;
+      }
+
+      function apiBase() {
+        const base = apiInput.value.trim();
+        if (!base) throw new Error('API base URL is required');
+        return base;
+      }
+
+      async function createTournament() {
+        try {
+          const base = apiBase();
+          const tournamentId = document.getElementById('createId').value.trim();
+          const themeId = document.getElementById('themeId').value.trim();
+          const nameKey = document.getElementById('nameKey').value.trim();
+          const nameKeySecondary = document.getElementById('nameKeySecondary').value.trim();
+          const regTime = document.getElementById('regTime').value.trim();
+          const startTime = document.getElementById('startTime').value.trim();
+          const region = document.getElementById('createRegion').value.trim() || 'NA1';
+          if (!tournamentId) throw new Error('tournamentId required');
+          const registrationTime = parseTime(regTime);
+          const start = parseTime(startTime);
+          if (!registrationTime || !start) throw new Error('registrationTime and startTime required');
+          const resp = await fetch(`${base}/tournaments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tournamentId,
+              themeId: themeId ? Number(themeId) : undefined,
+              nameKey,
+              nameKeySecondary,
+              region,
+              tournament: {
+                tournamentId,
+                themeId: themeId ? Number(themeId) : undefined,
+                nameKey,
+                nameKeySecondary,
+                schedule: [
+                  {
+                    id: 1,
+                    registrationTime,
+                    startTime: start
+                  }
+                ]
+              }
+            })
+          });
+          const data = await resp.json();
+          log('createTournament', { status: resp.status, data });
+        } catch (err) {
+          log('createTournament error', { error: err.message || err.toString() });
+        }
+      }
+
+      function parseTime(input) {
+        if (!input) return null;
+        const asInt = Number(input);
+        if (!Number.isNaN(asInt) && asInt > 0) return asInt;
+        const parsed = Date.parse(input);
+        return Number.isNaN(parsed) ? null : parsed;
+      }
+
+      async function registerPlayer() {
+        try {
+          const base = apiBase();
+          const tournamentId = document.getElementById('regTournamentId').value.trim();
+          const playerId = document.getElementById('playerId').value.trim();
+          const rolesRaw = document.getElementById('roles').value.trim();
+          const preferredRoles = rolesRaw ? rolesRaw.split(',').map((r) => r.trim()) : [];
+          if (!tournamentId || !playerId) throw new Error('tournamentId and playerId required');
+          const resp = await fetch(`${base}/tournaments/${tournamentId}/registrations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playerId, preferredRoles })
+          });
+          const data = await resp.json();
+          log('registerPlayer', { status: resp.status, data });
+        } catch (err) {
+          log('registerPlayer error', { error: err.message || err.toString() });
+        }
+      }
+
+      async function startAssignment() {
+        try {
+          const base = apiBase();
+          const tournamentId = document.getElementById('assignTournamentId').value.trim();
+          if (!tournamentId) throw new Error('tournamentId required');
+          const resp = await fetch(`${base}/tournaments/${tournamentId}/assign`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tournamentId })
+          });
+          const data = await resp.json();
+          log('startAssignment', { status: resp.status, data });
+        } catch (err) {
+          log('startAssignment error', { error: err.message || err.toString() });
+        }
+      }
+    </script>
+  </body>
+</html>
+

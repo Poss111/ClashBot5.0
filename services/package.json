@@ -12,7 +12,10 @@
     "@aws-sdk/client-secrets-manager": "^3.515.0",
     "@aws-sdk/client-sfn": "^3.515.0",
     "@aws-sdk/client-apigatewaymanagementapi": "^3.515.0",
-    "@aws-sdk/client-lambda": "^3.515.0"
+    "@aws-sdk/client-lambda": "^3.515.0",
+    "@aws-sdk/client-sns": "^3.515.0",
+    "@aws-sdk/client-kms": "^3.515.0",
+    "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
     "typescript": "^5.4.0"

@@ -5,7 +5,8 @@ import '../services/tournaments_service.dart';
 import '../services/assignments_service.dart';
 
 class TournamentsListScreen extends StatefulWidget {
-  const TournamentsListScreen({super.key});
+  final String? userEmail;
+  const TournamentsListScreen({super.key, this.userEmail});
 
   @override
   State<TournamentsListScreen> createState() => _TournamentsListScreenState();
@@ -29,6 +30,9 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
   @override
   void initState() {
     super.initState();
+    if ((widget.userEmail ?? '').isNotEmpty) {
+      _playerIdController.text = widget.userEmail!;
+    }
     _load();
   }
 
@@ -208,7 +212,7 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Check API availability, VPN/proxy settings, or try again shortly. If the API was recently deployed, allow a minute for the endpoint to warm up.',
+                    'Check connectivity, VPN/proxy settings, or try again shortly.',
                     style: TextStyle(color: Colors.grey.shade700),
                   ),
                 ],
@@ -253,7 +257,7 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              tournament.name ?? tournament.tournamentId,
+                      tournament.name?.isNotEmpty == true ? tournament.name! : tournament.tournamentId,
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
@@ -272,7 +276,7 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
                   child: TextField(
                     controller: _playerIdController,
                     decoration: const InputDecoration(
-                      labelText: 'Player ID',
+                      labelText: 'Search for Player',
                       hintText: 'discord or summoner',
                       border: OutlineInputBorder(),
                       isDense: true,

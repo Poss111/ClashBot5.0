@@ -38,11 +38,13 @@ class RegistrationPayload {
   final String playerId;
   final List<String>? preferredRoles;
   final String? availability;
+  final String? teamId;
 
   RegistrationPayload({
     required this.playerId,
     this.preferredRoles,
     this.availability,
+    this.teamId,
   });
 
   Map<String, dynamic> toJson() {
@@ -50,6 +52,7 @@ class RegistrationPayload {
       'playerId': playerId,
       if (preferredRoles != null) 'preferredRoles': preferredRoles,
       if (availability != null) 'availability': availability,
+      if (teamId != null) 'teamId': teamId,
     };
   }
 }

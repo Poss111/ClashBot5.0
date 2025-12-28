@@ -12,16 +12,22 @@ import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
+import * as kms from 'aws-cdk-lib/aws-kms';
+import * as budgets from 'aws-cdk-lib/aws-budgets';
 
 export interface ClashbotInfraStackProps extends StackProps {}
 
 export class ClashbotInfraStack extends Stack {
   constructor(scope: Construct, id: string, props?: ClashbotInfraStackProps) {
     super(scope, id, props);
+
+    this.tags.setTag('application', 'ClashBot5.0');
 
     // Data stores
     const tournamentsTable = new dynamodb.Table(this, 'TournamentsTable', {
@@ -62,6 +68,21 @@ export class ClashbotInfraStack extends Stack {
       projectionType: dynamodb.ProjectionType.ALL
     });
 
+    const eventsTable = new dynamodb.Table(this, 'EventsTable', {
+      tableName: 'ClashEvents',
+      partitionKey: { name: 'eventId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'timestamp', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.DESTROY
+    });
+
+    const usersTable = new dynamodb.Table(this, 'UsersTable', {
+      tableName: 'ClashUsers',
+      partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.DESTROY
+    });
+
     const connectionsTable = new dynamodb.Table(this, 'WebSocketConnectionsTable', {
       tableName: 'ClashWebSocketConnections',
       partitionKey: { name: 'connectionId', type: dynamodb.AttributeType.STRING },
@@ -74,11 +95,22 @@ export class ClashbotInfraStack extends Stack {
       secretName: 'RIOT-API-KEY'
     });
 
+    // New signing key (separate logical ID to avoid immutable changes on prior key)
+    const jwtSignKey = new kms.Key(this, 'AuthJwtSigningKey', {
+      enableKeyRotation: false,
+      description: 'KMS key for signing auth JWTs',
+      keySpec: kms.KeySpec.RSA_2048,
+      keyUsage: kms.KeyUsage.SIGN_VERIFY
+    });
+
     const commonEnv = {
       TOURNAMENTS_TABLE: tournamentsTable.tableName,
       TEAMS_TABLE: teamsTable.tableName,
       REGISTRATIONS_TABLE: registrationsTable.tableName,
+      USERS_TABLE: usersTable.tableName,
+      EVENTS_TABLE: eventsTable.tableName,
       RIOT_SECRET_NAME: riotSecret.secretName,
+      KMS_JWT_KEY_ID: jwtSignKey.keyId,
       AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
     };
 
@@ -87,7 +119,11 @@ export class ClashbotInfraStack extends Stack {
       '@aws-sdk/lib-dynamodb',
       '@aws-sdk/client-secrets-manager',
       '@aws-sdk/client-sfn',
-      '@aws-sdk/client-apigatewaymanagementapi'
+      '@aws-sdk/client-apigatewaymanagementapi',
+      '@aws-sdk/client-sns',
+      '@aws-sdk/client-lambda',
+      '@aws-sdk/client-kms',
+      'jsonwebtoken'
     ];
 
     const createLambda = (id: string, entryFile: string, extraEnv: Record<string, string> = {}) => {
@@ -112,14 +148,27 @@ export class ClashbotInfraStack extends Stack {
       tournamentsTable.grantReadWriteData(fn);
       teamsTable.grantReadWriteData(fn);
       registrationsTable.grantReadWriteData(fn);
+      usersTable.grantReadWriteData(fn);
+      eventsTable.grantReadWriteData(fn);
       riotSecret.grantRead(fn);
+      jwtSignKey.grantSign(fn);
+      jwtSignKey.grantVerify(fn);
+      jwtSignKey.grant(fn, 'kms:GetPublicKey');
 
       return fn;
     };
 
     // Core lambdas
-    const fetchUpcomingFn = createLambda('FetchUpcomingTournamentsFn', 'fetchUpcomingTournaments.ts');
-    const registerTournamentFn = createLambda('RegisterTournamentFn', 'registerTournament.ts');
+    const notificationTopic = new sns.Topic(this, 'FetchNotifications', {
+      displayName: 'ClashBot Fetch Notifications'
+    });
+    notificationTopic.addSubscription(new subscriptions.EmailSubscription('rixxroid@gmail.com'));
+
+    const fetchUpcomingFn = createLambda('FetchUpcomingTournamentsFn', 'fetchUpcomingTournaments.ts', {
+      NOTIFY_TOPIC_ARN: notificationTopic.topicArn
+    });
+    notificationTopic.grantPublish(fetchUpcomingFn);
+    const loadTournamentFn = createLambda('LoadTournamentFn', 'loadTournament.ts');
     const assignPlayersFn = createLambda('AssignPlayersToTeamsFn', 'assignPlayersToTeams.ts');
     const lockTeamsFn = createLambda('LockTeamsForSubmissionFn', 'lockTeamsForSubmission.ts');
     const deactivatePastFn = createLambda('DeactivatePastTournamentsFn', 'deactivatePastTournaments.ts');
@@ -128,6 +177,8 @@ export class ClashbotInfraStack extends Stack {
     const tournamentsApiFn = createLambda('TournamentsApiFn', 'tournamentsApi.ts');
     const registrationsApiFn = createLambda('RegistrationsApiFn', 'registrationsApi.ts');
     const teamsApiFn = createLambda('TeamsApiFn', 'teamsApi.ts');
+    const authBrokerFn = createLambda('AuthBrokerFn', 'authBroker.ts');
+    const authValidatorFn = createLambda('AuthValidatorFn', 'authValidator.ts');
 
     // WebSocket lambdas
     const websocketHandlerFn = createLambda('WebSocketHandlerFn', 'websocketHandler.ts', {
@@ -140,28 +191,51 @@ export class ClashbotInfraStack extends Stack {
     });
     connectionsTable.grantReadWriteData(broadcastEventFn);
 
+    // Register tournament lambda with broadcast capability
+    const registerTournamentFn = createLambda('RegisterTournamentFn', 'registerTournament.ts', {
+      BROADCAST_FUNCTION_NAME: broadcastEventFn.functionName
+    });
+    broadcastEventFn.grantInvoke(registerTournamentFn);
+
     // Step Function definition
-    const registerState = new tasks.LambdaInvoke(this, 'RegisterTournamentTask', {
-      lambdaFunction: registerTournamentFn,
-      resultPath: '$.register'
+    const loadTournamentState = new tasks.LambdaInvoke(this, 'LoadTournamentTask', {
+      lambdaFunction: loadTournamentFn,
+      resultPath: '$.tournament',
+      payloadResponseOnly: true,
+      payload: sfn.TaskInput.fromObject({
+        tournamentId: sfn.JsonPath.stringAt('$.tournamentId')
+      })
     });
 
-    const broadcastRegisterState = new tasks.LambdaInvoke(this, 'BroadcastRegisterEvent', {
+    const broadcastNotFoundState = new tasks.LambdaInvoke(this, 'BroadcastTournamentNotFound', {
       lambdaFunction: broadcastEventFn,
       payload: sfn.TaskInput.fromObject({
-        type: 'tournament.registered',
+        type: 'tournament.notFound',
         tournamentId: sfn.JsonPath.stringAt('$.tournamentId'),
-        data: {
-          tournamentId: sfn.JsonPath.stringAt('$.register.tournamentId'),
-          startTime: sfn.JsonPath.stringAt('$.register.startTime')
-        }
+        error: sfn.JsonPath.stringAt('$.error.Cause')
       }),
-      resultSelector: {}
+      resultSelector: {},
+      resultPath: sfn.JsonPath.DISCARD
     });
+
+    const tournamentNotFoundFail = new sfn.Fail(this, 'TournamentNotFoundFail', {
+      error: 'TournamentNotFound',
+      cause: 'Tournament not found'
+    });
+
+    loadTournamentState.addCatch(broadcastNotFoundState, {
+      resultPath: '$.error',
+      errors: ['States.ALL']
+    });
+    broadcastNotFoundState.next(tournamentNotFoundFail);
 
     const assignState = new tasks.LambdaInvoke(this, 'AssignPlayersTask', {
       lambdaFunction: assignPlayersFn,
-      resultPath: '$.assignment'
+      resultPath: '$.assignment',
+      payloadResponseOnly: true,
+      payload: sfn.TaskInput.fromObject({
+        tournamentId: sfn.JsonPath.stringAt('$.tournamentId')
+      })
     });
 
     const broadcastAssignState = new tasks.LambdaInvoke(this, 'BroadcastAssignEvent', {
@@ -169,18 +243,25 @@ export class ClashbotInfraStack extends Stack {
       payload: sfn.TaskInput.fromObject({
         type: 'players.assigned',
         tournamentId: sfn.JsonPath.stringAt('$.tournamentId'),
+        causedBy: sfn.JsonPath.stringAt('$.causedBy'),
         data: {
           tournamentId: sfn.JsonPath.stringAt('$.assignment.tournamentId'),
           teamId: sfn.JsonPath.stringAt('$.assignment.teamId'),
           assignedCount: sfn.JsonPath.numberAt('$.assignment.assignedCount')
         }
       }),
-      resultSelector: {}
+      resultSelector: {},
+      resultPath: sfn.JsonPath.DISCARD
     });
 
     const lockState = new tasks.LambdaInvoke(this, 'LockTeamsTask', {
       lambdaFunction: lockTeamsFn,
-      resultPath: '$.lock'
+      resultPath: '$.lock',
+      payloadResponseOnly: true,
+      payload: sfn.TaskInput.fromObject({
+        tournamentId: sfn.JsonPath.stringAt('$.tournamentId'),
+        teamId: sfn.JsonPath.stringAt('$.assignment.teamId')
+      })
     });
 
     const broadcastLockState = new tasks.LambdaInvoke(this, 'BroadcastLockEvent', {
@@ -188,17 +269,18 @@ export class ClashbotInfraStack extends Stack {
       payload: sfn.TaskInput.fromObject({
         type: 'teams.locked',
         tournamentId: sfn.JsonPath.stringAt('$.tournamentId'),
+        causedBy: sfn.JsonPath.stringAt('$.causedBy'),
         data: {
           tournamentId: sfn.JsonPath.stringAt('$.lock.tournamentId'),
           teamId: sfn.JsonPath.stringAt('$.lock.teamId'),
           status: sfn.JsonPath.stringAt('$.lock.status')
         }
       }),
-      resultSelector: {}
+      resultSelector: {},
+      resultPath: sfn.JsonPath.DISCARD
     });
 
-    const workflowDefinition = registerState
-      .next(broadcastRegisterState)
+    const workflowDefinition = loadTournamentState
       .next(assignState)
       .next(broadcastAssignState)
       .next(lockState)
@@ -222,16 +304,47 @@ export class ClashbotInfraStack extends Stack {
       restApiName: 'ClashBot API',
       deployOptions: {
         stageName: 'prod'
+      },
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigw.Cors.ALL_ORIGINS,
+        allowMethods: apigw.Cors.ALL_METHODS,
+        allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+      },
+      defaultMethodOptions: {
+        authorizationType: apigw.AuthorizationType.CUSTOM
       }
     });
 
+    const authorizer = new apigw.TokenAuthorizer(this, 'ApiAuthorizer', {
+      handler: authValidatorFn,
+      resultsCacheTtl: Duration.seconds(0) // no cache to keep it simple
+    });
+
     const tournamentsResource = api.root.addResource('tournaments');
-    tournamentsResource.addMethod('GET', new apigw.LambdaIntegration(tournamentsApiFn));
+    tournamentsResource.addMethod('GET', new apigw.LambdaIntegration(tournamentsApiFn), {
+      authorizer
+    });
+    tournamentsResource.addMethod('POST', new apigw.LambdaIntegration(registerTournamentFn), {
+      authorizer
+    });
     const tournamentIdResource = tournamentsResource.addResource('{id}');
-    tournamentIdResource.addMethod('GET', new apigw.LambdaIntegration(tournamentsApiFn));
-    tournamentIdResource.addResource('registrations').addMethod('POST', new apigw.LambdaIntegration(registrationsApiFn));
-    tournamentIdResource.addResource('assign').addMethod('POST', new apigw.LambdaIntegration(startAssignmentFn));
-    tournamentIdResource.addResource('teams').addMethod('GET', new apigw.LambdaIntegration(teamsApiFn));
+    tournamentIdResource.addMethod('GET', new apigw.LambdaIntegration(tournamentsApiFn), {
+      authorizer
+    });
+    tournamentIdResource.addResource('registrations').addMethod('POST', new apigw.LambdaIntegration(registrationsApiFn), {
+      authorizer
+    });
+    tournamentIdResource.addResource('assign').addMethod('POST', new apigw.LambdaIntegration(startAssignmentFn), {
+      authorizer
+    });
+    const teamsResource = tournamentIdResource.addResource('teams');
+    teamsResource.addMethod('GET', new apigw.LambdaIntegration(teamsApiFn), { authorizer });
+    teamsResource.addMethod('POST', new apigw.LambdaIntegration(teamsApiFn), { authorizer });
+
+    const authResource = api.root.addResource('auth');
+    authResource.addResource('token').addMethod('POST', new apigw.LambdaIntegration(authBrokerFn), {
+      authorizationType: apigw.AuthorizationType.NONE
+    });
 
     // WebSocket API
     const websocketApi = new apigwv2.WebSocketApi(this, 'ClashWebSocketApi', {
@@ -272,7 +385,8 @@ export class ClashbotInfraStack extends Stack {
 
     // EventBridge schedules
     new events.Rule(this, 'FetchUpcomingSchedule', {
-      schedule: events.Schedule.rate(Duration.days(1)),
+      // 4 AM CST ≈ 10:00 UTC (no DST adjustment)
+      schedule: events.Schedule.cron({ minute: '0', hour: '10' }),
       targets: [new targets.LambdaFunction(fetchUpcomingFn)]
     });
 
@@ -339,6 +453,36 @@ export class ClashbotInfraStack extends Stack {
       value: websocketApi.apiId,
       description: 'WebSocket API ID'
     });
+
+    // Budgets: email alerts at $10, $25, $50 for tagged resources
+    const budgetThresholds = [10, 25, 50];
+    for (const amount of budgetThresholds) {
+      new budgets.CfnBudget(this, `ClashBudget${amount}`, {
+        budget: {
+          budgetType: 'COST',
+          timeUnit: 'MONTHLY',
+          budgetLimit: { amount, unit: 'USD' },
+          costFilters: {
+            TagKeyValue: ['application$ClashBot5.0']
+          }
+        },
+        notificationsWithSubscribers: [
+          {
+            notification: {
+              notificationType: 'ACTUAL',
+              comparisonOperator: 'GREATER_THAN',
+              threshold: amount
+            },
+            subscribers: [
+              {
+                subscriptionType: 'EMAIL',
+                address: 'rixxroid@gmail.com'
+              }
+            ]
+          }
+        ]
+      });
+    }
   }
 }
 

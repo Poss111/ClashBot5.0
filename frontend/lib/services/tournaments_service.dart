@@ -2,13 +2,23 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/tournament.dart';
 import 'api_config.dart';
+import 'auth_service.dart';
 
 class TournamentsService {
   final String baseUrl = ApiConfig.baseUrl;
 
+  Map<String, String> _headers() {
+    final token = AuthService.instance.backendToken;
+    return {
+      'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+  }
+
   Future<List<Tournament>> list() async {
     final response = await http.get(
       Uri.parse('$baseUrl/tournaments'),
+      headers: _headers(),
     );
 
     if (response.statusCode == 200) {
@@ -23,6 +33,7 @@ class TournamentsService {
   Future<Tournament> get(String id) async {
     final response = await http.get(
       Uri.parse('$baseUrl/tournaments/$id'),
+      headers: _headers(),
     );
 
     if (response.statusCode == 200) {
@@ -35,7 +46,7 @@ class TournamentsService {
   Future<void> register(String id, RegistrationPayload payload) async {
     final response = await http.post(
       Uri.parse('$baseUrl/tournaments/$id/registrations'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers(),
       body: json.encode(payload.toJson()),
     );
 

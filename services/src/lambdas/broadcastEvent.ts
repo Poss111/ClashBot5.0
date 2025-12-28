@@ -1,7 +1,8 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, ScanCommand, DeleteCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi';
 import { logInfo, logError } from '../shared/logger';
+import { randomUUID } from 'crypto';
 
 const ddbClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -9,10 +10,12 @@ interface BroadcastEvent {
   type: string;
   data: any;
   tournamentId?: string;
+  causedBy?: string;
 }
 
 export const handler = async (event: BroadcastEvent) => {
   const connectionsTable = process.env.CONNECTIONS_TABLE!;
+  const eventsTable = process.env.EVENTS_TABLE;
   const websocketEndpoint = process.env.WEBSOCKET_ENDPOINT!;
 
   if (!websocketEndpoint) {
@@ -60,11 +63,30 @@ export const handler = async (event: BroadcastEvent) => {
 
     await Promise.allSettled(broadcastPromises);
 
-    logInfo('broadcastEvent.completed', {
+    const summary = {
       eventType: event.type,
       connectionCount: connections.length,
-      tournamentId: event.tournamentId
-    });
+      tournamentId: event.tournamentId,
+      causedBy: event.causedBy
+    };
+
+    if (eventsTable) {
+      await ddbClient.send(
+        new PutCommand({
+          TableName: eventsTable,
+          Item: {
+            eventId: randomUUID(),
+            timestamp: new Date().toISOString(),
+            type: event.type,
+            data: event.data,
+            tournamentId: event.tournamentId,
+            causedBy: event.causedBy ?? 'unknown'
+          }
+        })
+      );
+    }
+
+    logInfo('broadcastEvent.completed', summary);
   } catch (err) {
     logError('broadcastEvent.failed', {
       error: String(err),

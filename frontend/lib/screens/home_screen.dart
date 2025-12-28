@@ -71,6 +71,10 @@ class HomeScreen extends StatelessWidget {
                 },
                 child: const Text('Riot API docs'),
               ),
+              OutlinedButton(
+                onPressed: () => context.go('/websocket-test'),
+                child: const Text('WebSocket Test'),
+              ),
             ],
           ),
           const SizedBox(height: 16),

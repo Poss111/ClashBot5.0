@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/home_screen.dart';
 import 'screens/tournaments_list_screen.dart';
+import 'screens/websocket_test_screen.dart';
 import 'services/api_config.dart';
 
 void main() async {
@@ -65,6 +66,14 @@ class _ClashBotAppState extends State<ClashBotApp> {
             child: const TournamentsListScreen(),
           ),
         ),
+        GoRoute(
+          path: '/websocket-test',
+          builder: (context, state) => _AppScaffold(
+            isDarkMode: _isDarkMode,
+            onToggleTheme: _toggleTheme,
+            child: const WebSocketTestScreen(),
+          ),
+        ),
       ],
     );
 
@@ -118,6 +127,10 @@ class _AppScaffold extends StatelessWidget {
           TextButton(
             onPressed: () => context.go('/tournaments'),
             child: const Text('Tournaments'),
+          ),
+          TextButton(
+            onPressed: () => context.go('/websocket-test'),
+            child: const Text('WebSocket Test'),
           ),
           IconButton(
             icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),

@@ -27,11 +27,16 @@ export class ClashbotInfraStack extends Stack {
   constructor(scope: Construct, id: string, props?: ClashbotInfraStackProps) {
     super(scope, id, props);
 
+    const envName = this.node.tryGetContext('env') ?? 'prod';
+    const isDev = envName === 'dev';
+    const prefix = isDev ? 'dev-' : '';
+
     this.tags.setTag('application', 'ClashBot5.0');
+    this.tags.setTag('environment', envName);
 
     // Data stores
     const tournamentsTable = new dynamodb.Table(this, 'TournamentsTable', {
-      tableName: 'ClashTournaments',
+      tableName: `${prefix}ClashTournaments`,
       partitionKey: { name: 'tournamentId', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'startTime', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -39,7 +44,7 @@ export class ClashbotInfraStack extends Stack {
     });
 
     const teamsTable = new dynamodb.Table(this, 'TeamsTable', {
-      tableName: 'ClashTeams',
+      tableName: `${prefix}ClashTeams`,
       partitionKey: { name: 'teamId', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'tournamentId', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -54,7 +59,7 @@ export class ClashbotInfraStack extends Stack {
     });
 
     const registrationsTable = new dynamodb.Table(this, 'RegistrationsTable', {
-      tableName: 'ClashRegistrations',
+      tableName: `${prefix}ClashRegistrations`,
       partitionKey: { name: 'tournamentId', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'playerId', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -69,7 +74,7 @@ export class ClashbotInfraStack extends Stack {
     });
 
     const eventsTable = new dynamodb.Table(this, 'EventsTable', {
-      tableName: 'ClashEvents',
+      tableName: `${prefix}ClashEvents`,
       partitionKey: { name: 'eventId', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'timestamp', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -77,14 +82,14 @@ export class ClashbotInfraStack extends Stack {
     });
 
     const usersTable = new dynamodb.Table(this, 'UsersTable', {
-      tableName: 'ClashUsers',
+      tableName: `${prefix}ClashUsers`,
       partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: RemovalPolicy.DESTROY
     });
 
     const connectionsTable = new dynamodb.Table(this, 'WebSocketConnectionsTable', {
-      tableName: 'ClashWebSocketConnections',
+      tableName: `${prefix}ClashWebSocketConnections`,
       partitionKey: { name: 'connectionId', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: RemovalPolicy.DESTROY,
@@ -92,7 +97,7 @@ export class ClashbotInfraStack extends Stack {
     });
 
     const riotSecret = new secrets.Secret(this, 'RiotApiKey', {
-      secretName: 'RIOT-API-KEY'
+      secretName: `${prefix}RIOT-API-KEY`
     });
 
     // New signing key (separate logical ID to avoid immutable changes on prior key)
@@ -131,6 +136,7 @@ export class ClashbotInfraStack extends Stack {
         runtime: lambda.Runtime.NODEJS_20_X,
         handler: 'handler',
         entry: path.join(__dirname, '..', '..', 'services', 'src', 'lambdas', entryFile),
+        functionName: `${prefix}${id}`,
         bundling: {
           target: 'node20',
           format: lambdaNode.OutputFormat.CJS,
@@ -196,6 +202,10 @@ export class ClashbotInfraStack extends Stack {
       BROADCAST_FUNCTION_NAME: broadcastEventFn.functionName
     });
     broadcastEventFn.grantInvoke(registerTournamentFn);
+    const updateTournamentFn = createLambda('UpdateTournamentFn', 'updateTournament.ts', {
+      BROADCAST_FUNCTION_NAME: broadcastEventFn.functionName
+    });
+    broadcastEventFn.grantInvoke(updateTournamentFn);
 
     // Step Function definition
     const loadTournamentState = new tasks.LambdaInvoke(this, 'LoadTournamentTask', {
@@ -288,7 +298,8 @@ export class ClashbotInfraStack extends Stack {
 
     const assignmentStateMachine = new sfn.StateMachine(this, 'AssignmentWorkflow', {
       definitionBody: sfn.DefinitionBody.fromChainable(workflowDefinition),
-      timeout: Duration.minutes(5)
+      timeout: Duration.minutes(5),
+      stateMachineName: `${prefix}AssignmentWorkflow`
     });
 
     // Lambda to start workflow from API
@@ -301,9 +312,9 @@ export class ClashbotInfraStack extends Stack {
 
     // API Gateway (REST)
     const api = new apigw.RestApi(this, 'ClashApi', {
-      restApiName: 'ClashBot API',
+      restApiName: `${prefix}ClashBot API`,
       deployOptions: {
-        stageName: 'prod'
+        stageName: envName
       },
       defaultCorsPreflightOptions: {
         allowOrigins: apigw.Cors.ALL_ORIGINS,
@@ -329,6 +340,9 @@ export class ClashbotInfraStack extends Stack {
     });
     const tournamentIdResource = tournamentsResource.addResource('{id}');
     tournamentIdResource.addMethod('GET', new apigw.LambdaIntegration(tournamentsApiFn), {
+      authorizer
+    });
+    tournamentIdResource.addMethod('PUT', new apigw.LambdaIntegration(updateTournamentFn), {
       authorizer
     });
     tournamentIdResource.addResource('registrations').addMethod('POST', new apigw.LambdaIntegration(registrationsApiFn), {
@@ -370,7 +384,7 @@ export class ClashbotInfraStack extends Stack {
 
     const websocketStage = new apigwv2.WebSocketStage(this, 'ClashWebSocketStage', {
       webSocketApi: websocketApi,
-      stageName: 'prod',
+      stageName: envName,
       autoDeploy: true
     });
 

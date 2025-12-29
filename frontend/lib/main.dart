@@ -1,28 +1,32 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/home_screen.dart';
 import 'screens/tournaments_list_screen.dart';
-import 'screens/websocket_test_screen.dart';
 import 'screens/teams_screen.dart';
-import 'services/api_config.dart';
+import 'screens/admin_screen.dart';
 import 'services/auth_service.dart';
+import 'services/websocket_config.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ClashBotApp());
+  runApp(const ClashCompanionApp());
 }
 
-class ClashBotApp extends StatefulWidget {
-  const ClashBotApp({super.key});
+class ClashCompanionApp extends StatefulWidget {
+  const ClashCompanionApp({super.key});
 
   @override
-  State<ClashBotApp> createState() => _ClashBotAppState();
+  State<ClashCompanionApp> createState() => _ClashCompanionAppState();
 }
 
-class _ClashBotAppState extends State<ClashBotApp> {
+class _ClashCompanionAppState extends State<ClashCompanionApp> {
   bool _isDarkMode = false;
   final _routerKey = GlobalKey<NavigatorState>();
+  late final GoRouter _router;
   String? _userEmail;
   String? _userName;
   String? _userAvatar;
@@ -30,10 +34,115 @@ class _ClashBotAppState extends State<ClashBotApp> {
   String? _effectiveRole;
   bool _authLoading = false;
   bool _authFailed = false;
+  WebSocketChannel? _wsChannel;
+  final List<Map<String, dynamic>> _events = [];
+  int _unreadEvents = 0;
 
   @override
   void initState() {
     super.initState();
+    _router = GoRouter(
+      navigatorKey: _routerKey,
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) => _AppScaffold(
+            isDarkMode: _isDarkMode,
+            onToggleTheme: _toggleTheme,
+            onSignIn: _signIn,
+            onSignOut: _signOut,
+            userEmail: _userEmail,
+            userName: _userName,
+            userAvatar: _userAvatar,
+            userRole: _userRole,
+            effectiveRole: _effectiveRole ?? _userRole,
+            onRoleChange: _setEffectiveRole,
+            authLoading: _authLoading,
+            authFailed: _authFailed,
+            isHome: true,
+            events: _events,
+            unreadEvents: _unreadEvents,
+            onShowEvents: () => _showEvents(context),
+            child: HomeScreen(
+              effectiveRole: _effectiveRole ?? _userRole,
+              navEnabled: !_authFailed && !_authLoading,
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/tournaments',
+          builder: (context, state) => _AppScaffold(
+            isDarkMode: _isDarkMode,
+            onToggleTheme: _toggleTheme,
+            onSignIn: _signIn,
+            onSignOut: _signOut,
+            userEmail: _userEmail,
+            userName: _userName,
+            userAvatar: _userAvatar,
+            userRole: _userRole,
+            effectiveRole: _effectiveRole ?? _userRole,
+            onRoleChange: _setEffectiveRole,
+            authLoading: _authLoading,
+            authFailed: _authFailed,
+            isHome: false,
+            events: _events,
+            unreadEvents: _unreadEvents,
+            onShowEvents: () => _showEvents(context),
+            child: _authFailed
+                ? const _UnauthorizedScreen(message: 'Sign-in required')
+                : TournamentsListScreen(userEmail: _userEmail),
+          ),
+        ),
+        GoRoute(
+          path: '/teams',
+          builder: (context, state) => _AppScaffold(
+            isDarkMode: _isDarkMode,
+            onToggleTheme: _toggleTheme,
+            onSignIn: _signIn,
+            onSignOut: _signOut,
+            userEmail: _userEmail,
+            userName: _userName,
+            userAvatar: _userAvatar,
+            userRole: _userRole,
+            effectiveRole: _effectiveRole ?? _userRole,
+            onRoleChange: _setEffectiveRole,
+            authLoading: _authLoading,
+            authFailed: _authFailed,
+            isHome: false,
+            events: _events,
+            unreadEvents: _unreadEvents,
+            onShowEvents: () => _showEvents(context),
+            child: _authFailed
+                ? const _UnauthorizedScreen(message: 'Sign-in required')
+                : TeamsScreen(userEmail: _userEmail),
+          ),
+        ),
+        GoRoute(
+          path: '/admin',
+          builder: (context, state) => _AppScaffold(
+            isDarkMode: _isDarkMode,
+            onToggleTheme: _toggleTheme,
+            onSignIn: _signIn,
+            onSignOut: _signOut,
+            userEmail: _userEmail,
+            userName: _userName,
+            userAvatar: _userAvatar,
+            userRole: _userRole,
+            effectiveRole: _effectiveRole ?? _userRole,
+            onRoleChange: _setEffectiveRole,
+            authLoading: _authLoading,
+            authFailed: _authFailed,
+            isHome: false,
+            events: _events,
+            unreadEvents: _unreadEvents,
+            onShowEvents: () => _showEvents(context),
+            child: !_authFailed && (_effectiveRole ?? _userRole) == 'ADMIN'
+                ? AdminScreen(userEmail: _userEmail)
+                : const _UnauthorizedScreen(message: 'Admins only'),
+          ),
+        ),
+      ],
+    );
     _loadTheme();
     _loadUser();
   }
@@ -63,6 +172,7 @@ class _ClashBotAppState extends State<ClashBotApp> {
           _effectiveRole = _userRole;
           _authFailed = false;
         });
+        _ensureWebSocket();
       }
     } catch (_) {
       if (mounted) {
@@ -95,6 +205,7 @@ class _ClashBotAppState extends State<ClashBotApp> {
           _effectiveRole = _userRole;
           _authFailed = false;
         });
+        _ensureWebSocket();
       }
     } catch (_) {
       if (mounted) {
@@ -121,7 +232,10 @@ class _ClashBotAppState extends State<ClashBotApp> {
         _userRole = null;
         _effectiveRole = null;
         _authFailed = false;
+        _events.clear();
+        _unreadEvents = 0;
       });
+      _disposeWebSocket();
     }
   }
 
@@ -139,101 +253,131 @@ class _ClashBotAppState extends State<ClashBotApp> {
     });
   }
 
+  void _ensureWebSocket() {
+    if (_wsChannel != null) return;
+    try {
+      _wsChannel = WebSocketChannel.connect(Uri.parse(WebSocketConfig.baseUrl));
+      _wsChannel!.stream.listen((event) {
+        if (!mounted) return;
+        Map<String, dynamic> parsed = {
+          'raw': event.toString(),
+          'timestamp': DateTime.now().toIso8601String(),
+        };
+        try {
+          final obj = json.decode(event.toString());
+          if (obj is Map<String, dynamic>) {
+            parsed.addAll(obj);
+          }
+        } catch (_) {
+          // keep raw
+        }
+        setState(() {
+          _events.insert(0, parsed);
+          if (_events.length > 100) {
+            _events.removeRange(100, _events.length);
+          }
+          _unreadEvents += 1;
+        });
+      }, onError: (_) {
+        _disposeWebSocket();
+      }, onDone: () {
+        _disposeWebSocket();
+      });
+    } catch (_) {
+      _disposeWebSocket();
+    }
+  }
+
+  void _disposeWebSocket() {
+    _wsChannel?.sink.close();
+    _wsChannel = null;
+  }
+
+  void _showEvents(BuildContext context) {
+    setState(() {
+      _unreadEvents = 0;
+    });
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) {
+        if (_events.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('No events yet.'),
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: _events.length,
+          itemBuilder: (_, i) {
+            final ev = _events[i];
+            final title = (ev['type'] ?? 'event').toString();
+            final causedBy = ev['causedBy']?.toString();
+            final tournamentId = ev['tournamentId']?.toString();
+            final ts = ev['timestamp']?.toString();
+            final data = ev['data'];
+            return Card(
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          tooltip: 'Dismiss',
+                          onPressed: () {
+                            Navigator.of(ctx).pop();
+                            setState(() {
+                              _events.removeAt(i);
+                            });
+                            // Reopen to reflect removal
+                            WidgetsBinding.instance.addPostFrameCallback((_) => _showEvents(context));
+                          },
+                        )
+                      ],
+                    ),
+                    if (tournamentId != null) Text('Tournament: $tournamentId'),
+                    if (causedBy != null) Text('Caused by: $causedBy'),
+                    if (ts != null) Text('Time: $ts'),
+                    if (data != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          const JsonEncoder.withIndent('  ').convert(data),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                        ),
+                      ),
+                    if (data == null && ev['raw'] != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          ev['raw'].toString(),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                        ),
+                      )
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final router = GoRouter(
-      navigatorKey: _routerKey,
-      routes: [
-        GoRoute(
-          path: '/',
-          builder: (context, state) => _AppScaffold(
-            isDarkMode: _isDarkMode,
-            onToggleTheme: _toggleTheme,
-            onSignIn: _signIn,
-            onSignOut: _signOut,
-            userEmail: _userEmail,
-            userName: _userName,
-            userAvatar: _userAvatar,
-            userRole: _userRole,
-            effectiveRole: _effectiveRole ?? _userRole,
-            onRoleChange: _setEffectiveRole,
-            authLoading: _authLoading,
-            authFailed: _authFailed,
-            isHome: true,
-            child: HomeScreen(
-              effectiveRole: _effectiveRole ?? _userRole,
-              navEnabled: !_authFailed && !_authLoading,
-            ),
-          ),
-        ),
-        GoRoute(
-          path: '/tournaments',
-          builder: (context, state) => _AppScaffold(
-            isDarkMode: _isDarkMode,
-            onToggleTheme: _toggleTheme,
-            onSignIn: _signIn,
-            onSignOut: _signOut,
-            userEmail: _userEmail,
-            userName: _userName,
-            userAvatar: _userAvatar,
-            userRole: _userRole,
-            effectiveRole: _effectiveRole ?? _userRole,
-            onRoleChange: _setEffectiveRole,
-            authLoading: _authLoading,
-            authFailed: _authFailed,
-            isHome: false,
-            child: _authFailed
-                ? const _UnauthorizedScreen(message: 'Sign-in required')
-                : TournamentsListScreen(userEmail: _userEmail),
-          ),
-        ),
-        GoRoute(
-          path: '/websocket-test',
-          builder: (context, state) => _AppScaffold(
-            isDarkMode: _isDarkMode,
-            onToggleTheme: _toggleTheme,
-            onSignIn: _signIn,
-            onSignOut: _signOut,
-            userEmail: _userEmail,
-            userName: _userName,
-            userAvatar: _userAvatar,
-            userRole: _userRole,
-            effectiveRole: _effectiveRole ?? _userRole,
-            onRoleChange: _setEffectiveRole,
-            authLoading: _authLoading,
-            authFailed: _authFailed,
-            isHome: false,
-            child: !_authFailed && (_effectiveRole ?? _userRole) == 'ADMIN'
-                ? WebSocketTestScreen(userEmail: _userEmail)
-                : const _UnauthorizedScreen(message: 'Admins only'),
-          ),
-        ),
-        GoRoute(
-          path: '/teams',
-          builder: (context, state) => _AppScaffold(
-            isDarkMode: _isDarkMode,
-            onToggleTheme: _toggleTheme,
-            onSignIn: _signIn,
-            onSignOut: _signOut,
-            userEmail: _userEmail,
-            userName: _userName,
-            userAvatar: _userAvatar,
-            userRole: _userRole,
-            effectiveRole: _effectiveRole ?? _userRole,
-            onRoleChange: _setEffectiveRole,
-            authLoading: _authLoading,
-            authFailed: _authFailed,
-            isHome: false,
-            child: _authFailed
-                ? const _UnauthorizedScreen(message: 'Sign-in required')
-                : TeamsScreen(userEmail: _userEmail),
-          ),
-        ),
-      ],
-    );
-
     return MaterialApp.router(
-      title: 'ClashBot',
+      title: 'Clash Companion',
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
@@ -253,7 +397,7 @@ class _ClashBotAppState extends State<ClashBotApp> {
         cardColor: const Color(0xFF111827),
       ),
       themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
-      routerConfig: router,
+      routerConfig: _router,
     );
   }
 }
@@ -272,6 +416,9 @@ class _AppScaffold extends StatelessWidget {
   final bool authLoading;
   final bool authFailed;
   final bool isHome;
+  final List<Map<String, dynamic>> events;
+  final int unreadEvents;
+  final VoidCallback? onShowEvents;
   final Widget child;
 
   const _AppScaffold({
@@ -288,6 +435,9 @@ class _AppScaffold extends StatelessWidget {
     required this.authLoading,
     required this.authFailed,
     required this.isHome,
+    required this.events,
+    required this.unreadEvents,
+    this.onShowEvents,
     required this.child,
   });
 
@@ -295,7 +445,7 @@ class _AppScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ClashBot'),
+        title: const Text('Clash Companion'),
         actions: [
           TextButton(
             onPressed: () => context.go('/'),
@@ -309,11 +459,7 @@ class _AppScaffold extends StatelessWidget {
             onPressed: authFailed ? null : () => context.go('/teams'),
             child: const Text('Teams'),
           ),
-          if (!authFailed && userRole == 'ADMIN')
-            TextButton(
-              onPressed: () => context.go('/websocket-test'),
-              child: const Text('WebSocket Test'),
-            ),
+          _buildEventsIcon(context),
           IconButton(
             icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
             onPressed: onToggleTheme,
@@ -358,6 +504,10 @@ class _AppScaffold extends StatelessWidget {
         onSelected: (value) async {
           if (value == 'signin') {
             await onSignIn?.call();
+          } else if (value == 'admin') {
+            context.go('/admin');
+          } else if (value == 'home') {
+            context.go('/');
           } else if (value == 'signout') {
             final confirmed = await showDialog<bool>(
               context: context,
@@ -392,7 +542,7 @@ class _AppScaffold extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 14,
-                    backgroundImage: userAvatar != null ? NetworkImage(userAvatar!) : null,
+                    backgroundImage: userAvatar != null ? CachedNetworkImageProvider(userAvatar!) : null,
                     child: userAvatar == null
                         ? Text(
                             (userName?.isNotEmpty ?? false)
@@ -417,6 +567,15 @@ class _AppScaffold extends StatelessWidget {
               ),
             ),
             const PopupMenuDivider(),
+            if ((effectiveRole ?? userRole) == 'ADMIN')
+              const PopupMenuItem(
+                value: 'admin',
+                child: Text('Admin'),
+              ),
+            const PopupMenuItem(
+              value: 'home',
+              child: Text('Home'),
+            ),
             const PopupMenuItem(
               value: 'signout',
               child: Text('Sign out'),
@@ -427,7 +586,7 @@ class _AppScaffold extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 14,
-              backgroundImage: userAvatar != null ? NetworkImage(userAvatar!) : null,
+              backgroundImage: userAvatar != null ? CachedNetworkImageProvider(userAvatar!) : null,
               child: userAvatar == null
                   ? Text(
                       (userName?.isNotEmpty ?? false)
@@ -443,6 +602,36 @@ class _AppScaffold extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildEventsIcon(BuildContext context) {
+    final count = unreadEvents;
+    return IconButton(
+      tooltip: 'Events',
+      onPressed: onShowEvents,
+      icon: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Icon(Icons.notifications),
+          if (count > 0)
+            Positioned(
+              right: -6,
+              top: -6,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  count > 99 ? '99+' : '$count',
+                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                ),
+              ),
+            )
+        ],
       ),
     );
   }

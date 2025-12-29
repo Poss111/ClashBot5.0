@@ -18,7 +18,8 @@
     "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "@types/aws-lambda": "^8.10.131"
   }
 }
 

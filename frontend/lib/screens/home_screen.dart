@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../services/api_config.dart';
 
 class HomeScreen extends StatelessWidget {
   final String? effectiveRole;
@@ -53,7 +52,7 @@ class HomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'ClashBot keeps player signups in one place, matches roles fast, and gets teams ready for tournament day without last-minute chaos.',
+            'Clash Companion keeps player signups in one place, matches roles fast, and gets teams ready for tournament day without last-minute chaos.',
             style: theme.textTheme.bodyLarge?.copyWith(
               color: const Color(0xFFCBD5E1),
             ),
@@ -64,22 +63,14 @@ class HomeScreen extends StatelessWidget {
             runSpacing: 12,
             children: [
               ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: Size.zero,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
                 onPressed: navEnabled ? () => context.go('/tournaments') : null,
                 child: const Text('View tournaments'),
-              ),
-              OutlinedButton(
-                onPressed: navEnabled
-                    ? () {
-                        // TODO: Open Riot API docs in browser
-                      }
-                    : null,
-                child: const Text('Riot API docs'),
-              ),
-              if ((effectiveRole ?? '') == 'ADMIN')
-                OutlinedButton(
-                  onPressed: navEnabled ? () => context.go('/websocket-test') : null,
-                  child: const Text('WebSocket Test'),
-                ),
+              )
             ],
           ),
           const SizedBox(height: 16),
@@ -118,16 +109,17 @@ class HomeScreen extends StatelessWidget {
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 1.8,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            childAspectRatio: 2.6,
           ),
           itemCount: features.length,
           itemBuilder: (context, index) {
             final feature = features[index];
             return Card(
+              margin: EdgeInsets.zero,
               child: Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -139,13 +131,11 @@ class HomeScreen extends StatelessWidget {
                           ),
                     ),
                     const SizedBox(height: 6),
-                    Flexible(
-                      child: Text(
-                        feature['description']!,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                        maxLines: 4,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                    Text(
+                      feature['description']!,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),

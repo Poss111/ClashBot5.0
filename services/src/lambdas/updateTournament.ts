@@ -1,49 +1,49 @@
-import { PutCommand } from '@aws-sdk/lib-dynamodb';
+import { QueryCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { APIGatewayProxyEvent } from 'aws-lambda';
-import { docClient } from '../shared/db';
-import { logInfo, logError } from '../shared/logger';
 import { randomUUID } from 'crypto';
+import { docClient } from '../shared/db';
 import { jsonResponse } from '../shared/http';
+import { logInfo, logError } from '../shared/logger';
 
 export const handler = async (event: APIGatewayProxyEvent) => {
   const traceId = randomUUID();
 
   try {
-    // Find user from the requestContext
     const user = event.requestContext?.authorizer?.principalId;
     if (!user) {
-      return jsonResponse(401, {
-        statusCode: 401,
-        message: 'Unauthorized',
-        traceId
-      });
+      return jsonResponse(401, { statusCode: 401, message: 'Unauthorized', traceId });
     }
 
-    logInfo('User information', { user });
+    const tournamentId = event.pathParameters?.id;
+    if (!tournamentId) {
+      return jsonResponse(400, { statusCode: 400, message: 'tournamentId is required in path', traceId });
+    }
 
     let payload: any = {};
     try {
       payload = event.body ? JSON.parse(event.body) : {};
-    } catch (err) {
-      return jsonResponse(400, {
-        statusCode: 400,
-        message: 'Invalid JSON body',
-        traceId
-      });
+    } catch {
+      return jsonResponse(400, { statusCode: 400, message: 'Invalid JSON body', traceId });
     }
 
-    logInfo('Tournament information trying to be created', { tournamentDetails: payload });
+    const existing = await docClient.send(
+      new QueryCommand({
+        TableName: process.env.TOURNAMENTS_TABLE,
+        KeyConditionExpression: 'tournamentId = :tid',
+        ExpressionAttributeValues: { ':tid': tournamentId },
+        Limit: 1
+      })
+    );
+    const existingItem = existing.Items?.[0];
+    if (!existingItem) {
+      return jsonResponse(404, { statusCode: 404, message: 'Tournament not found', traceId });
+    }
 
-    // Required fields matching Riot Clash tournament DTO
     const schedule = payload.schedule ?? payload.tournament?.schedule;
     const primarySchedule = schedule?.[0];
 
-    logInfo('registerTournament.start', { traceId, event });
-
     const missing: string[] = [];
-    const tournamentId = payload.tournamentId ?? payload.tournament?.tournamentId;
-    if (!tournamentId) missing.push('tournamentId');
     if (payload.themeId === undefined && payload.tournament?.themeId === undefined) missing.push('themeId');
     if (!payload.nameKey && !payload.tournament?.nameKey) missing.push('nameKey');
     if (!payload.nameKeySecondary && !payload.tournament?.nameKeySecondary) missing.push('nameKeySecondary');
@@ -59,29 +59,25 @@ export const handler = async (event: APIGatewayProxyEvent) => {
     }
 
     const tournament = {
-      tournamentId: tournamentId!,
+      tournamentId,
       themeId: payload.themeId ?? payload.tournament?.themeId,
       nameKey: payload.nameKey ?? payload.tournament?.nameKey,
       nameKeySecondary: payload.nameKeySecondary ?? payload.tournament?.nameKeySecondary,
       schedule,
       startTime: new Date(primarySchedule!.startTime).toISOString(),
       registrationTime: new Date(primarySchedule!.registrationTime).toISOString(),
-      status: payload.tournament?.status ?? 'upcoming',
-      createdBy: user,
-      createdAt: new Date().toISOString()
+      status: payload.status ?? payload.tournament?.status ?? existingItem.status ?? 'upcoming',
+      updatedBy: user,
+      updatedAt: new Date().toISOString()
     };
 
     await docClient.send(
       new PutCommand({
         TableName: process.env.TOURNAMENTS_TABLE,
-        Item: {
-          ...tournament,
-          status: tournament.status ?? 'upcoming'
-        }
+        Item: tournament
       })
     );
 
-    // Broadcast tournament registered (causedBy: system)
     const broadcastFunctionName = process.env.BROADCAST_FUNCTION_NAME;
     if (broadcastFunctionName) {
       try {
@@ -91,11 +87,11 @@ export const handler = async (event: APIGatewayProxyEvent) => {
             FunctionName: broadcastFunctionName,
             InvocationType: 'Event',
             Payload: JSON.stringify({
-              type: 'tournament.registered',
-              tournamentId: tournament.tournamentId,
-              causedBy: 'system',
+              type: 'tournament.updated',
+              tournamentId,
+              causedBy: user,
               data: {
-                tournamentId: tournament.tournamentId,
+                tournamentId,
                 nameKey: tournament.nameKey,
                 nameKeySecondary: tournament.nameKeySecondary,
                 startTime: tournament.startTime
@@ -104,23 +100,16 @@ export const handler = async (event: APIGatewayProxyEvent) => {
           })
         );
       } catch (err) {
-        logError('registerTournament.broadcastFailed', { traceId, error: String(err) });
+        logError('updateTournament.broadcastFailed', { traceId, error: String(err) });
       }
     }
 
-    logInfo('registerTournament.upserted', {
-      tournamentId: tournament.tournamentId,
-      startTime: tournament.startTime,
-      traceId
-    });
-    return jsonResponse(201, { tournamentId: tournament.tournamentId, startTime: tournament.startTime, traceId });
+    logInfo('updateTournament.updated', { tournamentId, traceId, updatedBy: user });
+    return jsonResponse(200, { tournamentId, startTime: tournament.startTime, traceId });
   } catch (err) {
-    logError('registerTournament.failed', { traceId, error: String(err) });
-    return jsonResponse(500, {
-      statusCode: 500,
-      message: 'Failed to register tournament',
-      traceId
-    });
+    logError('updateTournament.failed', { traceId, error: String(err), stack: err});
+    return jsonResponse(500, { statusCode: 500, message: 'Failed to update tournament', traceId });
   }
 };
+
 

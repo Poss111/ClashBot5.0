@@ -54,5 +54,27 @@ class TournamentsService {
       throw Exception('Failed to register: ${response.statusCode}');
     }
   }
+
+  Future<void> createTournament(Map<String, dynamic> payload) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/tournaments'),
+      headers: _headers(),
+      body: json.encode(payload),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Failed to create tournament: ${response.statusCode} ${response.body}');
+    }
+  }
+
+  Future<void> updateTournament(String id, Map<String, dynamic> payload) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/tournaments/$id'),
+      headers: _headers(),
+      body: json.encode(payload),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Failed to update tournament: ${response.statusCode} ${response.body}');
+    }
+  }
 }
 

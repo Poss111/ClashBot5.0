@@ -12,11 +12,30 @@ class TournamentsListScreen extends StatefulWidget {
   State<TournamentsListScreen> createState() => _TournamentsListScreenState();
 }
 
+class _WeekdayLabel extends StatelessWidget {
+  final String text;
+  const _WeekdayLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Center(
+        child: Text(
+          text,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
+}
+
 class _TournamentsListScreenState extends State<TournamentsListScreen> {
   final TournamentsService _tournamentsService = TournamentsService();
   final AssignmentsService _assignmentsService = AssignmentsService();
-  
-  List<Tournament> _tournaments = [];
+  Map<String, List<Tournament>> _dayBuckets = {};
+  DateTime _visibleMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  DateTime _selectedDay = DateTime.now();
   bool _loading = false;
   bool _submitting = false;
   bool _assigning = false;
@@ -53,7 +72,15 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
     try {
       final tournaments = await _tournamentsService.list();
       setState(() {
-        _tournaments = tournaments;
+        _dayBuckets = _bucketByDay(tournaments);
+        if (_dayBuckets.isNotEmpty) {
+          // If selected day has no tournaments, snap to first available
+          final selectedKey = _dayKey(_selectedDay);
+          if (!_dayBuckets.containsKey(selectedKey)) {
+            _selectedDay = DateTime.parse(_dayBuckets.keys.first);
+            _visibleMonth = DateTime(_selectedDay.year, _selectedDay.month, 1);
+          }
+        }
       });
     } catch (e) {
       setState(() {
@@ -152,7 +179,9 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
           if (_backendUnreachable) _buildOfflineCard(),
           if (_message != null) _buildSuccessCard(),
           const SizedBox(height: 16),
-          ..._tournaments.map((tournament) => _buildTournamentCard(tournament)),
+          _buildCalendarCard(),
+          const SizedBox(height: 16),
+          _buildSelectedDayList(),
         ],
       ),
     );
@@ -161,10 +190,6 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
   Widget _buildToolbar() {
     return Row(
       children: [
-        ElevatedButton(
-          onPressed: _loading ? null : _load,
-          child: const Text('Refresh'),
-        ),
         const Spacer(),
         if (_loading)
           const SizedBox(
@@ -175,6 +200,190 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
       ],
     );
   }
+
+  Widget _buildCalendarCard() {
+    final firstDay = DateTime(_visibleMonth.year, _visibleMonth.month, 1);
+    final daysInMonth = DateTime(_visibleMonth.year, _visibleMonth.month + 1, 0).day;
+    final firstWeekday = firstDay.weekday % 7; // Sunday = 0
+    final cells = <DateTime?>[];
+    for (int i = 0; i < firstWeekday; i++) {
+      cells.add(null);
+    }
+    for (int d = 1; d <= daysInMonth; d++) {
+      cells.add(DateTime(_visibleMonth.year, _visibleMonth.month, d));
+    }
+    while (cells.length % 7 != 0) {
+      cells.add(null);
+    }
+
+    final rows = <TableRow>[];
+    for (int i = 0; i < cells.length; i += 7) {
+      rows.add(
+        TableRow(
+          children: List.generate(7, (j) => _buildDayCell(cells[i + j])),
+        ),
+      );
+    }
+
+    final monthLabel = DateFormat.yMMMM().format(_visibleMonth);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month - 1, 1);
+                    });
+                  },
+                  icon: const Icon(Icons.chevron_left),
+                  tooltip: 'Previous month',
+                ),
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      monthLabel,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month + 1, 1);
+                    });
+                  },
+                  icon: const Icon(Icons.chevron_right),
+                  tooltip: 'Next month',
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Table(
+              children: [
+                const TableRow(
+                  children: [
+                    _WeekdayLabel('Sun'),
+                    _WeekdayLabel('Mon'),
+                    _WeekdayLabel('Tue'),
+                    _WeekdayLabel('Wed'),
+                    _WeekdayLabel('Thu'),
+                    _WeekdayLabel('Fri'),
+                    _WeekdayLabel('Sat'),
+                  ],
+                ),
+                ...rows,
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDayCell(DateTime? day) {
+    final isToday = day != null &&
+        day.year == DateTime.now().year &&
+        day.month == DateTime.now().month &&
+        day.day == DateTime.now().day;
+    final selected = day != null &&
+        day.year == _selectedDay.year &&
+        day.month == _selectedDay.month &&
+        day.day == _selectedDay.day;
+    final key = day != null ? _dayKey(day) : null;
+    final count = key != null ? (_dayBuckets[key]?.length ?? 0) : 0;
+
+    if (day == null) {
+      return const SizedBox(height: 48);
+    }
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedDay = day;
+        });
+      },
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+        decoration: BoxDecoration(
+          color: selected ? Theme.of(context).colorScheme.primary.withOpacity(0.1) : null,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  '${day.day}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: selected
+                        ? Theme.of(context).colorScheme.primary
+                        : (isToday ? Theme.of(context).colorScheme.secondary : null),
+                  ),
+                ),
+                const Spacer(),
+                if (count > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.85),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectedDayList() {
+    final key = _dayKey(_selectedDay);
+    final items = _dayBuckets[key] ?? [];
+    final label = DateFormat.yMMMMd().format(_selectedDay);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Tournaments on $label', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        if (items.isEmpty)
+          const Text('No tournaments scheduled for this day.')
+        else
+          ...items.map((t) => _buildTournamentCard(t)),
+      ],
+    );
+  }
+
+  Map<String, List<Tournament>> _bucketByDay(List<Tournament> tournaments) {
+    final buckets = <String, List<Tournament>>{};
+    for (final t in tournaments) {
+      DateTime? dt;
+      try {
+        dt = DateTime.parse(t.startTime);
+      } catch (_) {
+        continue;
+      }
+      final key = _dayKey(dt);
+      buckets.putIfAbsent(key, () => []);
+      buckets[key]!.add(t);
+    }
+    return buckets;
+  }
+
+  String _dayKey(DateTime dt) => DateFormat('yyyy-MM-dd').format(dt);
 
   Widget _buildErrorCard() {
     return Card(
@@ -257,7 +466,9 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-                      tournament.name?.isNotEmpty == true ? tournament.name! : tournament.tournamentId,
+              tournament.nameKeySecondary?.isNotEmpty == true
+                  ? tournament.nameKeySecondary!
+                  : (tournament.name?.isNotEmpty == true ? tournament.name! : tournament.tournamentId),
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
               ),

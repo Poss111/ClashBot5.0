@@ -7,16 +7,20 @@
     "build": "tsc",
     "synth": "cdk synth",
     "deploy": "cdk deploy",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "upload-frontend": "ts-node --transpile-only scripts/upload-frontend.ts"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.156.0",
-    "constructs": "^10.3.0"
+    "constructs": "^10.3.0",
+    "mime-types": "^2.1.35"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
     "ts-node": "^10.9.2",
-    "esbuild": "^0.19.0"
+    "esbuild": "^0.19.0",
+    "@types/node": "^20.0.0",
+    "@aws-sdk/client-s3": "^3.515.0"
   }
 }
 

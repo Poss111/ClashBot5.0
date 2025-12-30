@@ -162,7 +162,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
       _authFailed = false;
     });
     try {
-      final user = await AuthService.instance.signIn(); // attempt silent sign-in
+      final user = await AuthService.instance.signIn(); // attempt silent sign-in only
       if (mounted) {
         setState(() {
           _userEmail = user?.email;
@@ -195,7 +195,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
       _authFailed = false;
     });
     try {
-      final user = await AuthService.instance.signIn();
+      final user = await AuthService.instance.signIn(interactive: true); // allow prompt on manual sign-in
       if (mounted) {
         setState(() {
           _userEmail = user?.email;
@@ -496,7 +496,7 @@ class _AppScaffold extends StatelessWidget {
   }
 
   Widget _buildAuthChip(BuildContext context) {
-    final loggedIn = userEmail != null;
+    final loggedIn = (userEmail ?? '').isNotEmpty || AuthService.instance.backendToken != null;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: PopupMenuButton<String>(

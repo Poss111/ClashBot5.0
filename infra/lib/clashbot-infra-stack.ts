@@ -397,6 +397,37 @@ export class ClashbotInfraStack extends Stack {
     const websocketEndpoint = `https://${websocketApi.apiId}.execute-api.${this.region}.amazonaws.com/${websocketStage.stageName}`;
     broadcastEventFn.addEnvironment('WEBSOCKET_ENDPOINT', websocketEndpoint);
 
+    // CloudFront viewer-request function to strip leading prefixes for REST (/api) and WS (/events).
+    const stripApiAndEventsPrefixFn = new cloudfront.Function(this, 'StripApiAndEventsPrefixFn', {
+      code: cloudfront.FunctionCode.fromInline(`
+function handler(event) {
+  var req = event.request;
+  if (req.uri.startsWith('/api/')) {
+    req.uri = req.uri.substring(4); // drop '/api'
+    if (req.uri === '') req.uri = '/';
+  }
+  if (req.uri.startsWith('/events/')) {
+    req.uri = req.uri.substring(8); // drop '/events'
+    if (req.uri === '') req.uri = '/';
+  }
+  return req;
+}
+      `)
+    });
+
+    const apiPathPattern = '/api/*';
+    // API Gateway already expects the stage prefix in the URI; no extra originPath.
+    const apiOriginPath = undefined;
+    const apiOrigin = new origins.HttpOrigin(`${api.restApiId}.execute-api.${this.region}.amazonaws.com`, {
+      originPath: apiOriginPath,
+      protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY
+    });
+
+    // WebSocket origin: keep path untouched; viewer function will strip /events prefix to expose the stage path.
+    const wsOrigin = new origins.HttpOrigin(`${websocketApi.apiId}.execute-api.${this.region}.amazonaws.com`, {
+      protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY
+    });
+
     // EventBridge schedules
     new events.Rule(this, 'FetchUpcomingSchedule', {
       // 4 AM CST ≈ 10:00 UTC (no DST adjustment)
@@ -410,8 +441,19 @@ export class ClashbotInfraStack extends Stack {
     });
 
     // Frontend hosting bucket + CloudFront
+    const siteBucketName = `${prefix}clash-companion-frontend-${this.account}-${this.region}`;
+
     const siteBucket = new s3.Bucket(this, 'FrontendBucket', {
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      bucketName: siteBucketName,
+      websiteIndexDocument: 'index.html',
+      websiteErrorDocument: 'index.html',
+      publicReadAccess: true,
+      blockPublicAccess: {
+        blockPublicAcls: false,
+        blockPublicPolicy: false,
+        ignorePublicAcls: false,
+        restrictPublicBuckets: false
+      },
       encryption: s3.BucketEncryption.S3_MANAGED,
       versioned: false,
       removalPolicy: RemovalPolicy.DESTROY,
@@ -421,8 +463,39 @@ export class ClashbotInfraStack extends Stack {
     const distribution = new cloudfront.Distribution(this, 'FrontendDistribution', {
       defaultRootObject: 'index.html',
       defaultBehavior: {
-        origin: new origins.S3Origin(siteBucket),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS
+        origin: new origins.HttpOrigin(siteBucket.bucketWebsiteDomainName, {
+          protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY
+        }),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED
+      },
+      additionalBehaviors: {
+        [apiPathPattern]: {
+          origin: apiOrigin,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          functionAssociations: [
+            {
+              eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+              function: stripApiAndEventsPrefixFn
+            }
+          ]
+        },
+        '/events/*': {
+          origin: wsOrigin,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          functionAssociations: [
+            {
+              eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+              function: stripApiAndEventsPrefixFn
+            }
+          ]
+        }
       },
       errorResponses: [
         {
@@ -438,14 +511,6 @@ export class ClashbotInfraStack extends Stack {
           ttl: Duration.minutes(5)
         }
       ]
-    });
-
-    // Deploy built Angular assets (expects `frontend/dist/clashbot`)
-    new s3deploy.BucketDeployment(this, 'DeployFrontend', {
-      sources: [s3deploy.Source.asset(path.join(__dirname, '..', '..', 'frontend', 'dist', 'clashbot'))],
-      destinationBucket: siteBucket,
-      distribution,
-      distributionPaths: ['/*']
     });
 
     new CfnOutput(this, 'CloudFrontDomain', {

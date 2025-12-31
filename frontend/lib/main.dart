@@ -443,29 +443,78 @@ class _AppScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = _isMobile(context);
+    final showInlineRoleSwitcher = !authFailed && userRole == 'ADMIN' && !isMobile;
+    final navEnabled = !authFailed;
     return Scaffold(
+      drawer: isMobile
+          ? Drawer(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  DrawerHeader(
+                    decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary),
+                    child: Align(
+                      alignment: Alignment.bottomLeft,
+                      child: Text(
+                        'Clash Companion',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                  _buildNavTile(context, label: 'Home', route: '/', enabled: true),
+                  _buildNavTile(
+                    context,
+                    label: 'Tournaments',
+                    route: '/tournaments',
+                    enabled: navEnabled,
+                  ),
+                  _buildNavTile(
+                    context,
+                    label: 'Teams',
+                    route: '/teams',
+                    enabled: navEnabled,
+                  ),
+                  if ((effectiveRole ?? userRole) == 'ADMIN')
+                    _buildNavTile(context, label: 'Admin', route: '/admin', enabled: navEnabled),
+                ],
+              ),
+            )
+          : null,
       appBar: AppBar(
         title: const Text('Clash Companion'),
+        leading: isMobile
+            ? Builder(
+                builder: (ctx) => IconButton(
+                  icon: const Icon(Icons.menu),
+                  onPressed: () => Scaffold.of(ctx).openDrawer(),
+                  tooltip: 'Menu',
+                ),
+              )
+            : null,
         actions: [
-          TextButton(
-            onPressed: () => context.go('/'),
-            child: const Text('Home'),
-          ),
-          TextButton(
-            onPressed: authFailed ? null : () => context.go('/tournaments'),
-            child: const Text('Tournaments'),
-          ),
-          TextButton(
-            onPressed: authFailed ? null : () => context.go('/teams'),
-            child: const Text('Teams'),
-          ),
+          if (!isMobile)
+            TextButton(
+              onPressed: () => context.go('/'),
+              child: const Text('Home'),
+            ),
+          if (!isMobile)
+            TextButton(
+              onPressed: authFailed ? null : () => context.go('/tournaments'),
+              child: const Text('Tournaments'),
+            ),
+          if (!isMobile)
+            TextButton(
+              onPressed: authFailed ? null : () => context.go('/teams'),
+              child: const Text('Teams'),
+            ),
           _buildEventsIcon(context),
           IconButton(
             icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
             onPressed: onToggleTheme,
             tooltip: isDarkMode ? 'Light mode' : 'Dark mode',
           ),
-          if (!authFailed && userRole == 'ADMIN') _buildRoleSwitcher(context),
+          if (showInlineRoleSwitcher) _buildRoleSwitcher(context),
           const SizedBox(width: 8),
           _buildAuthChip(context),
         ],
@@ -497,6 +546,8 @@ class _AppScaffold extends StatelessWidget {
 
   Widget _buildAuthChip(BuildContext context) {
     final loggedIn = (userEmail ?? '').isNotEmpty || AuthService.instance.backendToken != null;
+    final isMobile = _isMobile(context);
+    final canSwitchRoles = userRole == 'ADMIN';
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: PopupMenuButton<String>(
@@ -567,6 +618,18 @@ class _AppScaffold extends StatelessWidget {
               ),
             ),
             const PopupMenuDivider(),
+            if (canSwitchRoles && isMobile)
+              PopupMenuItem(
+                enabled: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Role', style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(height: 6),
+                    _buildRoleSwitcher(context),
+                  ],
+                ),
+              ),
             if ((effectiveRole ?? userRole) == 'ADMIN')
               const PopupMenuItem(
                 value: 'admin',
@@ -595,11 +658,13 @@ class _AppScaffold extends StatelessWidget {
                     )
                   : null,
             ),
-            const SizedBox(width: 6),
-            Text(
-              loggedIn ? (userName ?? userEmail ?? 'Account') : 'Sign in',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            if (!isMobile) ...[
+              const SizedBox(width: 6),
+              Text(
+                loggedIn ? (userName ?? userEmail ?? 'Account') : 'Sign in',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
           ],
         ),
       ),
@@ -660,6 +725,26 @@ class _AppScaffold extends StatelessWidget {
             .toList(),
       ),
     );
+  }
+
+  Widget _buildNavTile(BuildContext context,
+      {required String label, required String route, required bool enabled}) {
+    return ListTile(
+      title: Text(label),
+      enabled: enabled,
+      onTap: enabled
+          ? () {
+              Navigator.of(context).pop(); // close drawer
+              context.go(route);
+            }
+          : null,
+      trailing: const Icon(Icons.chevron_right),
+    );
+  }
+
+  bool _isMobile(BuildContext context) {
+    final platform = Theme.of(context).platform;
+    return platform == TargetPlatform.android || platform == TargetPlatform.iOS;
   }
 }
 

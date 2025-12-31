@@ -28,6 +28,15 @@ class AuthService {
   }
 
   Future<GoogleSignInAccount?> signIn({bool interactive = false}) async {
+    // If MOCK_AUTH is enabled, skip Google and use injected token/role.
+    if (const bool.fromEnvironment('MOCK_AUTH', defaultValue: false)) {
+      backendToken = const String.fromEnvironment('MOCK_TOKEN', defaultValue: 'mock-jwt-token');
+      backendRole = const String.fromEnvironment('MOCK_ROLE', defaultValue: 'GENERAL_USER');
+      // We don't fabricate a GoogleSignInAccount; UI will treat backendToken as logged-in.
+      currentUser = null;
+      await _persistBackendSession();
+      return currentUser;
+    }
     // Try restoring an existing backend session first to avoid a Google prompt.
     await _restoreBackendSession();
     final hasBackendSession = backendToken != null;

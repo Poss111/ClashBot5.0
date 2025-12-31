@@ -1,0 +1,18 @@
+{
+  "name": "clashbot-mock-api",
+  "private": true,
+  "version": "0.0.1",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "start:ws": "node websocket_server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "morgan": "^1.10.0",
+    "ws": "^8.16.0"
+  }
+}
+

@@ -1,0 +1,381 @@
+openapi: 3.0.3
+info:
+  title: Clash Companion API
+  version: 0.1.0
+  description: |
+    OpenAPI contract for the Clash Companion REST API. Paths include the stage prefix
+    (e.g., `/dev`, `/prod`). When fronted by CloudFront the paths are usually
+    `/api/{stage}/...`.
+servers:
+  - url: https://{apiId}.execute-api.{region}.amazonaws.com/{stage}
+    variables:
+      apiId:
+        default: your-api-id
+      region:
+        default: us-east-1
+      stage:
+        default: dev
+  - url: https://{cloudFrontDomain}/api/{stage}
+    description: CloudFront front door
+    variables:
+      cloudFrontDomain:
+        default: your-cloudfront-domain
+      stage:
+        default: dev
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Tournament:
+      type: object
+      properties:
+        tournamentId:
+          type: string
+        themeId:
+          type: integer
+        nameKey:
+          type: string
+        nameKeySecondary:
+          type: string
+        schedule:
+          type: array
+          items:
+            type: object
+            properties:
+              registrationTime:
+                type: string
+                format: date-time
+              startTime:
+                type: string
+                format: date-time
+        startTime:
+          type: string
+          format: date-time
+        registrationTime:
+          type: string
+          format: date-time
+        status:
+          type: string
+          example: upcoming
+      required:
+        - tournamentId
+        - themeId
+        - nameKey
+        - nameKeySecondary
+    Team:
+      type: object
+      properties:
+        teamId:
+          type: string
+        tournamentId:
+          type: string
+        captainSummoner:
+          type: string
+        members:
+          type: object
+          additionalProperties:
+            type: string
+          description: Map of role -> member assigned to that role
+        status:
+          type: string
+          example: open
+      required:
+        - teamId
+        - tournamentId
+    RegistrationRequest:
+      type: object
+      properties:
+        playerId:
+          type: string
+        preferredRoles:
+          type: array
+          items:
+            type: string
+        availability:
+          type: string
+      required:
+        - playerId
+    AuthTokenRequest:
+      type: object
+      properties:
+        idToken:
+          type: string
+        accessToken:
+          type: string
+    AuthTokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        role:
+          type: string
+          example: GENERAL_USER
+        exp:
+          type: integer
+paths:
+  /{stage}/auth/token:
+    post:
+      summary: Exchange Google id/access token for backend JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthTokenRequest'
+      responses:
+        '200':
+          description: JWT issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenResponse'
+        '401':
+          description: Invalid Google token
+  /{stage}/tournaments:
+    get:
+      summary: List active/upcoming tournaments
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of tournaments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tournament'
+    post:
+      summary: Register a tournament
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Tournament'
+      responses:
+        '201':
+          description: Tournament created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tournamentId:
+                    type: string
+                  startTime:
+                    type: string
+                    format: date-time
+  /{stage}/tournaments/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Get tournament by id
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Tournament detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tournament'
+        '404':
+          description: Not found
+    put:
+      summary: Update a tournament
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Tournament'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tournamentId:
+                    type: string
+                  startTime:
+                    type: string
+                    format: date-time
+  /{stage}/tournaments/{id}/registrations:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Register a player for a tournament
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrationRequest'
+      responses:
+        '201':
+          description: Registration accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tournamentId:
+                    type: string
+                  playerId:
+                    type: string
+                  status:
+                    type: string
+                    example: pending
+  /{stage}/tournaments/{id}/assign:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Start assignment workflow
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tournamentId:
+                  type: string
+      responses:
+        '202':
+          description: Workflow started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  executionArn:
+                    type: string
+                  tournamentId:
+                    type: string
+  /{stage}/tournaments/{id}/teams:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+    get:
+      summary: List teams for a tournament
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Team list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Team'
+    post:
+      summary: Create/update a team
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Team'
+      responses:
+        '201':
+          description: Team created/updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  teamId:
+                    type: string
+                  tournamentId:
+                    type: string
+  /{stage}/tournaments/{id}/teams/{teamId}/roles/{role}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: path
+        name: teamId
+        required: true
+        schema:
+          type: string
+      - in: path
+        name: role
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Assign a player to a role on a team
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                playerId:
+                  type: string
+              required:
+                - playerId
+      responses:
+        '200':
+          description: Role assigned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tournamentId:
+                    type: string
+                  teamId:
+                    type: string
+                  role:
+                    type: string
+                  playerId:
+                    type: string
+        '400':
+          description: Role already filled
+        '404':
+          description: Team not found
+

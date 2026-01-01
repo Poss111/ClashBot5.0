@@ -183,6 +183,7 @@ export class ClashbotInfraStack extends Stack {
     const tournamentsApiFn = createLambda('TournamentsApiFn', 'tournamentsApi.ts');
     const registrationsApiFn = createLambda('RegistrationsApiFn', 'registrationsApi.ts');
     const teamsApiFn = createLambda('TeamsApiFn', 'teamsApi.ts');
+    const assignRoleFn = createLambda('AssignRoleFn', 'assignRole.ts');
     const authBrokerFn = createLambda('AuthBrokerFn', 'authBroker.ts');
     const authValidatorFn = createLambda('AuthValidatorFn', 'authValidator.ts');
 
@@ -354,6 +355,10 @@ export class ClashbotInfraStack extends Stack {
     const teamsResource = tournamentIdResource.addResource('teams');
     teamsResource.addMethod('GET', new apigw.LambdaIntegration(teamsApiFn), { authorizer });
     teamsResource.addMethod('POST', new apigw.LambdaIntegration(teamsApiFn), { authorizer });
+    const teamIdResource = teamsResource.addResource('{teamId}');
+    const rolesResource = teamIdResource.addResource('roles');
+    const roleResource = rolesResource.addResource('{role}');
+    roleResource.addMethod('POST', new apigw.LambdaIntegration(assignRoleFn), { authorizer });
 
     const authResource = api.root.addResource('auth');
     authResource.addResource('token').addMethod('POST', new apigw.LambdaIntegration(authBrokerFn), {

@@ -10,9 +10,11 @@ class AuthService {
   static const _prefsTokenKey = 'auth_backend_token';
   static const _prefsRoleKey = 'auth_backend_role';
 
-  // Web client ID provided by user
+  // Google OAuth client IDs
   static const String _webClientId =
       '443293502674-6sh7ss1lfkea74rhmctmjghpbraprddn.apps.googleusercontent.com';
+  static const String _mobileClientId =
+      '443293502674-sgqit513s5af7bfoj2augsbg3ig5bd6g.apps.googleusercontent.com';
 
   GoogleSignIn? _googleSignIn;
   GoogleSignInAccount? currentUser;
@@ -21,7 +23,8 @@ class AuthService {
 
   GoogleSignIn _client() {
     _googleSignIn ??= GoogleSignIn(
-      clientId: kIsWeb ? _webClientId : null,
+      // For non-mocked mobile builds, use the mobile client; web keeps the web client.
+      clientId: kIsWeb ? _webClientId : _mobileClientId,
       scopes: ['email', 'profile'],
     );
     return _googleSignIn!;

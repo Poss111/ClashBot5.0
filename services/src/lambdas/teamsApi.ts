@@ -30,11 +30,13 @@ export const handler = async (event: any) => {
       return jsonResponse(400, { message: 'teamId is required' });
     }
 
+    const members = (body?.members && typeof body.members === 'object') ? body.members : {};
+
     const item = {
       teamId,
       tournamentId,
       captainSummoner: body?.captainSummoner,
-      members: body?.members ?? [],
+      members,
       status: body?.status ?? 'open'
     };
 

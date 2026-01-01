@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,6 +28,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
   bool _isDarkMode = false;
   final _routerKey = GlobalKey<NavigatorState>();
   late final GoRouter _router;
+  static const _prefsDisclaimerSeen = 'disclaimer_seen';
   String? _userEmail;
   String? _userName;
   String? _userAvatar;
@@ -145,6 +147,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
     );
     _loadTheme();
     _loadUser();
+    Future.microtask(_maybeShowDisclaimer);
   }
 
   Future<void> _loadTheme() async {
@@ -187,6 +190,30 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
         });
       }
     }
+  }
+
+  Future<void> _maybeShowDisclaimer() async {
+    final prefs = await SharedPreferences.getInstance();
+    final seen = prefs.getBool(_prefsDisclaimerSeen) ?? false;
+    if (seen || !mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Unofficial App'),
+        content: const Text(
+          'This app is an independent companion and is not affiliated with, endorsed by, '
+          'or in any way associated with Riot Games or League of Legends.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('I understand'),
+          ),
+        ],
+      ),
+    );
+    await prefs.setBool(_prefsDisclaimerSeen, true);
   }
 
   Future<void> _signIn() async {
@@ -397,6 +424,14 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
         cardColor: const Color(0xFF111827),
       ),
       themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('en'),
+      ],
       routerConfig: _router,
     );
   }
@@ -540,6 +575,17 @@ class _AppScaffold extends StatelessWidget {
               child: CircularProgressIndicator(),
             ),
         ],
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+          child: Text(
+            'Clash Companion is an independent app and is not affiliated with, endorsed by, '
+            'or associated with Riot Games or League of Legends.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+          ),
+        ),
       ),
     );
   }

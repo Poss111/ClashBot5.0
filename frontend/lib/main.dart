@@ -15,6 +15,7 @@ import 'screens/admin_screen.dart';
 import 'services/auth_service.dart';
 import 'services/websocket_config.dart';
 import 'services/event_recorder.dart';
+import 'services/tournaments_service.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
 
@@ -167,6 +168,8 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadUser();
       _maybeShowDisclaimer();
+      // Warm tournaments cache on app start.
+      TournamentsService().refreshCache();
     });
     _initNotifications();
     EventRecorder.register(_pushEvent);
@@ -376,6 +379,11 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
           }
           _unreadEvents += 1;
         });
+        final type = parsed['type']?.toString().toLowerCase() ?? '';
+        if (type.contains('tournament')) {
+          // Refresh tournament cache when a new tournament event arrives.
+          TournamentsService().refreshCache();
+        }
         _maybeNotifyTournament(parsed);
       }, onError: (_) {
         _disposeWebSocket();

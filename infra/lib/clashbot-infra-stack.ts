@@ -334,19 +334,14 @@ export class ClashbotInfraStack extends Stack {
     });
 
     const tournamentsResource = api.root.addResource('tournaments');
-    tournamentsResource.addMethod('GET', new apigw.LambdaIntegration(tournamentsApiFn), {
-      authorizer
-    });
-    tournamentsResource.addMethod('POST', new apigw.LambdaIntegration(registerTournamentFn), {
-      authorizer
-    });
+    // Public GETs
+    tournamentsResource.addMethod('GET', new apigw.LambdaIntegration(tournamentsApiFn), { authorizationType: apigw.AuthorizationType.NONE });
     const tournamentIdResource = tournamentsResource.addResource('{id}');
-    tournamentIdResource.addMethod('GET', new apigw.LambdaIntegration(tournamentsApiFn), {
-      authorizer
-    });
-    tournamentIdResource.addMethod('PUT', new apigw.LambdaIntegration(updateTournamentFn), {
-      authorizer
-    });
+    tournamentIdResource.addMethod('GET', new apigw.LambdaIntegration(tournamentsApiFn), { authorizationType: apigw.AuthorizationType.NONE });
+
+    // Authenticated writes/mutations
+    tournamentsResource.addMethod('POST', new apigw.LambdaIntegration(registerTournamentFn), { authorizer });
+    tournamentIdResource.addMethod('PUT', new apigw.LambdaIntegration(updateTournamentFn), { authorizer });
     tournamentIdResource.addResource('registrations').addMethod('POST', new apigw.LambdaIntegration(registrationsApiFn), {
       authorizer
     });

@@ -27,3 +27,4 @@ cdk.out/
 .env
 .env.local
 
+commands.sh

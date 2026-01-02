@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/tournament.dart';
 import '../services/tournaments_service.dart';
-import '../services/assignments_service.dart';
 
 class TournamentsListScreen extends StatefulWidget {
   final String? userEmail;
@@ -32,34 +31,17 @@ class _WeekdayLabel extends StatelessWidget {
 
 class _TournamentsListScreenState extends State<TournamentsListScreen> {
   final TournamentsService _tournamentsService = TournamentsService();
-  final AssignmentsService _assignmentsService = AssignmentsService();
   Map<String, List<Tournament>> _dayBuckets = {};
   DateTime _visibleMonth = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _selectedDay = DateTime.now();
   bool _loading = false;
-  bool _submitting = false;
-  bool _assigning = false;
   String? _error;
-  String? _message;
   bool _backendUnreachable = false;
-
-  final _playerIdController = TextEditingController();
-  final _rolesController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    if ((widget.userEmail ?? '').isNotEmpty) {
-      _playerIdController.text = widget.userEmail!;
-    }
     _load();
-  }
-
-  @override
-  void dispose() {
-    _playerIdController.dispose();
-    _rolesController.dispose();
-    super.dispose();
   }
 
   Future<void> _load() async {
@@ -94,78 +76,6 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
     }
   }
 
-  Future<void> _register(Tournament tournament) async {
-    if (_playerIdController.text.isEmpty) {
-      setState(() {
-        _error = 'Player ID required';
-      });
-      return;
-    }
-
-    setState(() {
-      _submitting = true;
-      _error = null;
-      _message = null;
-      _backendUnreachable = false;
-    });
-
-    try {
-      final roles = _rolesController.text
-          .split(',')
-          .map((r) => r.trim())
-          .where((r) => r.isNotEmpty)
-          .toList();
-
-      await _tournamentsService.register(
-        tournament.tournamentId,
-        RegistrationPayload(
-          playerId: _playerIdController.text,
-          preferredRoles: roles.isEmpty ? null : roles,
-        ),
-      );
-
-      setState(() {
-        _message = 'Registration submitted';
-        _playerIdController.clear();
-        _rolesController.clear();
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString().replaceAll('Exception: ', '');
-        _backendUnreachable = true;
-      });
-    } finally {
-      setState(() {
-        _submitting = false;
-      });
-    }
-  }
-
-  Future<void> _startAssignment(String tournamentId) async {
-    setState(() {
-      _assigning = true;
-      _error = null;
-      _message = null;
-      _backendUnreachable = false;
-    });
-
-    try {
-      await _assignmentsService.start(tournamentId);
-      setState(() {
-        _message = 'Assignment workflow started';
-      });
-    } catch (e) {
-      setState(() {
-        _error = e.toString().replaceAll('Exception: ', '');
-        _backendUnreachable = true;
-      });
-    } finally {
-      setState(() {
-        _assigning = false;
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -177,7 +87,6 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
           const SizedBox(height: 16),
           if (_error != null) _buildErrorCard(),
           if (_backendUnreachable) _buildOfflineCard(),
-          if (_message != null) _buildSuccessCard(),
           const SizedBox(height: 16),
           _buildCalendarCard(),
           const SizedBox(height: 16),
@@ -286,6 +195,7 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
   }
 
   Widget _buildDayCell(DateTime? day) {
+    final isMobile = _isMobile(context);
     final isToday = day != null &&
         day.year == DateTime.now().year &&
         day.month == DateTime.now().month &&
@@ -296,6 +206,7 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
         day.day == _selectedDay.day;
     final key = day != null ? _dayKey(day) : null;
     final count = key != null ? (_dayBuckets[key]?.length ?? 0) : 0;
+    final hasTournaments = count > 0;
 
     if (day == null) {
       return const SizedBox(height: 48);
@@ -311,7 +222,11 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
         height: 48,
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
         decoration: BoxDecoration(
-          color: selected ? Theme.of(context).colorScheme.primary.withOpacity(0.1) : null,
+          color: selected
+              ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
+              : (isMobile && hasTournaments
+                  ? Theme.of(context).colorScheme.primary.withOpacity(0.12)
+                  : null),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(
@@ -329,7 +244,7 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
                   ),
                 ),
                 const Spacer(),
-                if (count > 0)
+                if (!isMobile && hasTournaments)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
@@ -433,29 +348,26 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
     );
   }
 
-  Widget _buildSuccessCard() {
-    return Card(
-      color: Colors.green.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.green),
-            const SizedBox(width: 8),
-            Expanded(child: Text(_message!)),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildTournamentCard(Tournament tournament) {
     final theme = Theme.of(context);
     DateTime? startTime;
+    DateTime? registrationTime;
+    final status = (tournament.status ?? 'N/A').toUpperCase();
     try {
       startTime = DateTime.parse(tournament.startTime);
     } catch (e) {
       // Invalid date format
+    }
+    if (tournament.registrationTime != null) {
+      try {
+        registrationTime = DateTime.parse(tournament.registrationTime!);
+      } catch (_) {}
+    }
+    // Ensure registration precedes start for display; if inverted, swap.
+    if (startTime != null && registrationTime != null && registrationTime.isAfter(startTime)) {
+      final tmp = startTime;
+      startTime = registrationTime;
+      registrationTime = tmp;
     }
 
     return Card(
@@ -465,63 +377,54 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              tournament.nameKeySecondary?.isNotEmpty == true
-                  ? tournament.nameKeySecondary!
-                  : (tournament.name?.isNotEmpty == true ? tournament.name! : tournament.tournamentId),
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${tournament.region ?? 'region N/A'} · ${startTime != null ? DateFormat('MMM d, y h:mm a').format(startTime) : tournament.startTime} · status: ${tournament.status ?? 'N/A'}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 16),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _playerIdController,
-                    decoration: const InputDecoration(
-                      labelText: 'Search for Player',
-                      hintText: 'discord or summoner',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                  ),
+                Icon(
+                  _statusIconData(status),
+                  color: _statusIconColor(status, theme),
+                  size: 22,
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: TextField(
-                    controller: _rolesController,
-                    decoration: const InputDecoration(
-                      labelText: 'Preferred Roles (comma)',
-                      hintText: 'top, jungle',
-                      border: OutlineInputBorder(),
-                      isDense: true,
+                  child: Text(
+                    tournament.nameKeySecondary?.isNotEmpty == true
+                        ? tournament.nameKeySecondary!
+                        : (tournament.name?.isNotEmpty == true ? tournament.name! : tournament.tournamentId),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
               children: [
-                OutlinedButton.icon(
-                  onPressed: _assigning ? null : () => _startAssignment(tournament.tournamentId),
-                  icon: const Icon(Icons.play_arrow),
-                  label: Text(_assigning ? 'Starting...' : 'Start assignment'),
+                _buildInfoChip(
+                  icon: Icons.public,
+                  label: 'Region',
+                  value: tournament.region ?? 'N/A',
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  onPressed: _submitting ? null : () => _register(tournament),
-                  icon: const Icon(Icons.person_add),
-                  label: Text(_submitting ? 'Submitting...' : 'Register'),
+                if (registrationTime != null)
+                  _buildInfoChip(
+                    icon: Icons.login,
+                    label: 'Registration',
+                    value: DateFormat('EEE, MMM d · h:mm a').format(registrationTime),
+                  ),
+                _buildInfoChip(
+                  icon: Icons.event,
+                  label: 'Start',
+                  value: startTime != null
+                      ? DateFormat('EEE, MMM d · h:mm a').format(startTime)
+                      : tournament.startTime,
+                ),
+                _buildInfoChip(
+                  icon: Icons.numbers,
+                  label: 'ID',
+                  value: tournament.tournamentId,
                 ),
               ],
             ),
@@ -529,6 +432,81 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildInfoChip({
+    required IconData icon,
+    required String label,
+    required String value,
+    Color? background,
+  }) {
+    final theme = Theme.of(context);
+    return Chip(
+      backgroundColor: background ?? theme.colorScheme.surfaceVariant.withOpacity(0.6),
+      labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+      avatar: Icon(icon, size: 18, color: theme.colorScheme.primary),
+      label: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade800)),
+          Text(value, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+        ],
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    );
+  }
+
+  IconData _statusIconData(String status) {
+    switch (status.toLowerCase()) {
+      case 'upcoming':
+      case 'open':
+        return Icons.schedule;
+      case 'in_progress':
+      case 'live':
+        return Icons.bolt;
+      case 'closed':
+      case 'locked':
+        return Icons.lock;
+      case 'cancelled':
+      case 'canceled':
+        return Icons.cancel;
+      case 'completed':
+      case 'finished':
+        return Icons.check_circle;
+      default:
+        return Icons.help_outline;
+    }
+  }
+
+  Color _statusIconColor(String status, ThemeData theme) {
+    switch (status.toLowerCase()) {
+      case 'upcoming':
+      case 'open':
+        return Colors.green.shade600;
+      case 'in_progress':
+      case 'live':
+        return Colors.orange.shade700;
+      case 'closed':
+      case 'locked':
+        return Colors.blueGrey.shade600;
+      case 'cancelled':
+      case 'canceled':
+        return Colors.red.shade600;
+      case 'completed':
+      case 'finished':
+        return Colors.blue.shade700;
+      default:
+        return theme.colorScheme.primary;
+    }
+  }
+
+  bool _isMobile(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final platform = Theme.of(context).platform;
+    final isSmallScreen = width < 640;
+    final isHandset = platform == TargetPlatform.android || platform == TargetPlatform.iOS;
+    return isSmallScreen || isHandset;
   }
 }
 

@@ -1,4 +1,4 @@
-# ClashBot 5.0
+# ClashCompanion 5.0
 
 A tournament management system for League of Legends Clash, built with Flutter frontend and AWS backend services.
 
@@ -9,7 +9,7 @@ A tournament management system for League of Legends Clash, built with Flutter f
 
 ## Architecture Overview
 
-ClashBot uses AWS Step Functions to orchestrate the tournament assignment workflow. The workflow is triggered via API Gateway and executes three sequential Lambda functions to register tournaments, assign players to teams, and lock teams for submission.
+ClashCompanion uses AWS Step Functions to orchestrate the tournament assignment workflow. The workflow is triggered via API Gateway and executes three sequential Lambda functions to register tournaments, assign players to teams, and lock teams for submission.
 
 ## Step Function Workflow
 

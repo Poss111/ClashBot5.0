@@ -82,15 +82,15 @@ class HomeScreen extends StatelessWidget {
   Widget _buildFeatureGrid(BuildContext context) {
     final features = [
       {
-        'title': 'Theory craft early',
+        'title': 'Know when the next Tournament is!',
+        'description': 'We pull upcoming tournaments from Riot and display them here.',
+      },
+      {
+        'title': 'Theory craft',
         'description': 'Draft comps, swap roles, and sanity-check your roster before Riot opens registrations.',
       },
       {
-        'title': 'Admin + player flows',
-        'description': 'Players register; admins trigger assignments and track team status in one place.',
-      },
-      {
-        'title': 'Balanced teams faster',
+        'title': 'Balance teams faster',
         'description': 'Match roles quickly so every lineup is ready before registrations open in Riot.',
       },
     ];

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,6 +28,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
   bool _isDarkMode = false;
   final _routerKey = GlobalKey<NavigatorState>();
   late final GoRouter _router;
+  static const _prefsDisclaimerSeen = 'disclaimer_seen';
   String? _userEmail;
   String? _userName;
   String? _userAvatar;
@@ -145,6 +147,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
     );
     _loadTheme();
     _loadUser();
+    Future.microtask(_maybeShowDisclaimer);
   }
 
   Future<void> _loadTheme() async {
@@ -187,6 +190,30 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
         });
       }
     }
+  }
+
+  Future<void> _maybeShowDisclaimer() async {
+    final prefs = await SharedPreferences.getInstance();
+    final seen = prefs.getBool(_prefsDisclaimerSeen) ?? false;
+    if (seen || !mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Unofficial App'),
+        content: const Text(
+          'This app is an independent companion and is not affiliated with, endorsed by, '
+          'or in any way associated with Riot Games or League of Legends.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('I understand'),
+          ),
+        ],
+      ),
+    );
+    await prefs.setBool(_prefsDisclaimerSeen, true);
   }
 
   Future<void> _signIn() async {
@@ -397,6 +424,14 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
         cardColor: const Color(0xFF111827),
       ),
       themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('en'),
+      ],
       routerConfig: _router,
     );
   }
@@ -443,29 +478,78 @@ class _AppScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = _isMobile(context);
+    final showInlineRoleSwitcher = !authFailed && userRole == 'ADMIN' && !isMobile;
+    final navEnabled = !authFailed;
     return Scaffold(
+      drawer: isMobile
+          ? Drawer(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  DrawerHeader(
+                    decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary),
+                    child: Align(
+                      alignment: Alignment.bottomLeft,
+                      child: Text(
+                        'Clash Companion',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                  _buildNavTile(context, label: 'Home', route: '/', enabled: true),
+                  _buildNavTile(
+                    context,
+                    label: 'Tournaments',
+                    route: '/tournaments',
+                    enabled: navEnabled,
+                  ),
+                  _buildNavTile(
+                    context,
+                    label: 'Teams',
+                    route: '/teams',
+                    enabled: navEnabled,
+                  ),
+                  if ((effectiveRole ?? userRole) == 'ADMIN')
+                    _buildNavTile(context, label: 'Admin', route: '/admin', enabled: navEnabled),
+                ],
+              ),
+            )
+          : null,
       appBar: AppBar(
         title: const Text('Clash Companion'),
+        leading: isMobile
+            ? Builder(
+                builder: (ctx) => IconButton(
+                  icon: const Icon(Icons.menu),
+                  onPressed: () => Scaffold.of(ctx).openDrawer(),
+                  tooltip: 'Menu',
+                ),
+              )
+            : null,
         actions: [
-          TextButton(
-            onPressed: () => context.go('/'),
-            child: const Text('Home'),
-          ),
-          TextButton(
-            onPressed: authFailed ? null : () => context.go('/tournaments'),
-            child: const Text('Tournaments'),
-          ),
-          TextButton(
-            onPressed: authFailed ? null : () => context.go('/teams'),
-            child: const Text('Teams'),
-          ),
+          if (!isMobile)
+            TextButton(
+              onPressed: () => context.go('/'),
+              child: const Text('Home'),
+            ),
+          if (!isMobile)
+            TextButton(
+              onPressed: authFailed ? null : () => context.go('/tournaments'),
+              child: const Text('Tournaments'),
+            ),
+          if (!isMobile)
+            TextButton(
+              onPressed: authFailed ? null : () => context.go('/teams'),
+              child: const Text('Teams'),
+            ),
           _buildEventsIcon(context),
           IconButton(
             icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
             onPressed: onToggleTheme,
             tooltip: isDarkMode ? 'Light mode' : 'Dark mode',
           ),
-          if (!authFailed && userRole == 'ADMIN') _buildRoleSwitcher(context),
+          if (showInlineRoleSwitcher) _buildRoleSwitcher(context),
           const SizedBox(width: 8),
           _buildAuthChip(context),
         ],
@@ -492,11 +576,24 @@ class _AppScaffold extends StatelessWidget {
             ),
         ],
       ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+          child: Text(
+            'Clash Companion is an independent app and is not affiliated with, endorsed by, '
+            'or associated with Riot Games or League of Legends.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildAuthChip(BuildContext context) {
     final loggedIn = (userEmail ?? '').isNotEmpty || AuthService.instance.backendToken != null;
+    final isMobile = _isMobile(context);
+    final canSwitchRoles = userRole == 'ADMIN';
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: PopupMenuButton<String>(
@@ -567,6 +664,18 @@ class _AppScaffold extends StatelessWidget {
               ),
             ),
             const PopupMenuDivider(),
+            if (canSwitchRoles && isMobile)
+              PopupMenuItem(
+                enabled: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Role', style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(height: 6),
+                    _buildRoleSwitcher(context),
+                  ],
+                ),
+              ),
             if ((effectiveRole ?? userRole) == 'ADMIN')
               const PopupMenuItem(
                 value: 'admin',
@@ -595,11 +704,13 @@ class _AppScaffold extends StatelessWidget {
                     )
                   : null,
             ),
-            const SizedBox(width: 6),
-            Text(
-              loggedIn ? (userName ?? userEmail ?? 'Account') : 'Sign in',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+            if (!isMobile) ...[
+              const SizedBox(width: 6),
+              Text(
+                loggedIn ? (userName ?? userEmail ?? 'Account') : 'Sign in',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
           ],
         ),
       ),
@@ -660,6 +771,26 @@ class _AppScaffold extends StatelessWidget {
             .toList(),
       ),
     );
+  }
+
+  Widget _buildNavTile(BuildContext context,
+      {required String label, required String route, required bool enabled}) {
+    return ListTile(
+      title: Text(label),
+      enabled: enabled,
+      onTap: enabled
+          ? () {
+              Navigator.of(context).pop(); // close drawer
+              context.go(route);
+            }
+          : null,
+      trailing: const Icon(Icons.chevron_right),
+    );
+  }
+
+  bool _isMobile(BuildContext context) {
+    final platform = Theme.of(context).platform;
+    return platform == TargetPlatform.android || platform == TargetPlatform.iOS;
   }
 }
 

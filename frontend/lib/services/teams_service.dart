@@ -7,7 +7,7 @@ class Team {
   final String teamId;
   final String tournamentId;
   final String? captainSummoner;
-  final List<dynamic>? members;
+  final Map<String, dynamic>? members;
   final String? status;
 
   Team({
@@ -22,7 +22,7 @@ class Team {
         teamId: json['teamId'] as String,
         tournamentId: json['tournamentId'] as String,
         captainSummoner: json['captainSummoner'] as String?,
-        members: json['members'] as List<dynamic>?,
+        members: json['members'] as Map<String, dynamic>?,
         status: json['status'] as String?,
       );
 }
@@ -47,6 +47,17 @@ class TeamsService {
         .map((e) => Team.fromJson(e as Map<String, dynamic>))
         .toList();
     return items;
+  }
+
+  Future<void> assignRole(String tournamentId, String teamId, String role, String playerId) async {
+    final resp = await http.post(
+      Uri.parse('$baseUrl/tournaments/$tournamentId/teams/$teamId/roles/$role'),
+      headers: _headers(),
+      body: json.encode({'playerId': playerId}),
+    );
+    if (resp.statusCode != 200) {
+      throw Exception('Failed to assign role: ${resp.statusCode} ${resp.body}');
+    }
   }
 }
 

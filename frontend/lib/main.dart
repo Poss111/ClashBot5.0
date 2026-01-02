@@ -4,12 +4,14 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'screens/home_screen.dart';
 import 'screens/tournaments_list_screen.dart';
 import 'screens/teams_screen.dart';
 import 'screens/admin_screen.dart';
 import 'services/auth_service.dart';
 import 'services/websocket_config.dart';
+import 'services/event_recorder.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 void main() async {
@@ -34,6 +36,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
   String? _userAvatar;
   String? _userRole;
   String? _effectiveRole;
+  String? _appVersion;
   bool _authLoading = false;
   bool _authFailed = false;
   WebSocketChannel? _wsChannel;
@@ -64,6 +67,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
             isHome: true,
             events: _events,
             unreadEvents: _unreadEvents,
+            appVersion: _appVersion,
             onShowEvents: () => _showEvents(context),
             child: HomeScreen(
               effectiveRole: _effectiveRole ?? _userRole,
@@ -89,6 +93,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
             isHome: false,
             events: _events,
             unreadEvents: _unreadEvents,
+            appVersion: _appVersion,
             onShowEvents: () => _showEvents(context),
             child: _authFailed
                 ? const _UnauthorizedScreen(message: 'Sign-in required')
@@ -113,6 +118,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
             isHome: false,
             events: _events,
             unreadEvents: _unreadEvents,
+            appVersion: _appVersion,
             onShowEvents: () => _showEvents(context),
             child: _authFailed
                 ? const _UnauthorizedScreen(message: 'Sign-in required')
@@ -137,6 +143,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
             isHome: false,
             events: _events,
             unreadEvents: _unreadEvents,
+            appVersion: _appVersion,
             onShowEvents: () => _showEvents(context),
             child: !_authFailed && (_effectiveRole ?? _userRole) == 'ADMIN'
                 ? AdminScreen(userEmail: _userEmail)
@@ -146,8 +153,12 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
       ],
     );
     _loadTheme();
-    _loadUser();
-    Future.microtask(_maybeShowDisclaimer);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadUser();
+      _maybeShowDisclaimer();
+    });
+    EventRecorder.register(_pushEvent);
+    _loadVersion();
   }
 
   Future<void> _loadTheme() async {
@@ -166,18 +177,25 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
     });
     try {
       final user = await AuthService.instance.signIn(); // attempt silent sign-in only
+      final token = AuthService.instance.backendToken;
       if (mounted) {
         setState(() {
-          _userEmail = user?.email;
-          _userName = user?.displayName;
-          _userAvatar = user?.photoUrl;
-          _userRole = AuthService.instance.backendRole;
+          _userEmail = token != null ? user?.email : null;
+          _userName = token != null ? user?.displayName : null;
+          _userAvatar = token != null ? user?.photoUrl : null;
+          _userRole = token != null ? AuthService.instance.backendRole : null;
           _effectiveRole = _userRole;
-          _authFailed = false;
+          _authFailed = token == null;
         });
-        _ensureWebSocket();
+        if (token != null) {
+          _ensureWebSocket();
+        } else {
+          _disposeWebSocket();
+        }
       }
-    } catch (_) {
+    } catch (e) {
+      print("Error signing in: $e");
+      await _showAuthError(context, 'Failed to sign in with Google. Please try again.');
       if (mounted) {
         setState(() {
           _authFailed = true;
@@ -223,18 +241,29 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
     });
     try {
       final user = await AuthService.instance.signIn(interactive: true); // allow prompt on manual sign-in
+      final token = AuthService.instance.backendToken;
       if (mounted) {
         setState(() {
-          _userEmail = user?.email;
-          _userName = user?.displayName;
-          _userAvatar = user?.photoUrl;
-          _userRole = AuthService.instance.backendRole;
+          _userEmail = token != null ? user?.email : null;
+          _userName = token != null ? user?.displayName : null;
+          _userAvatar = token != null ? user?.photoUrl : null;
+          _userRole = token != null ? AuthService.instance.backendRole : null;
           _effectiveRole = _userRole;
-          _authFailed = false;
+          _authFailed = token == null;
         });
-        _ensureWebSocket();
+        if (token != null) {
+          _ensureWebSocket();
+        } else {
+          _disposeWebSocket();
+        }
+        if (token == null) {
+          // Sign-in attempt completed but we didn't get a token.
+          await _showAuthError(context, 'Failed to sign in with Google. Please try again.');
+        }
       }
-    } catch (_) {
+    } catch (e) {
+      print("Error signing in: $e");
+      await _showAuthError(context, 'Failed to sign in with Google. Please try again.');
       if (mounted) {
         setState(() {
           _authFailed = true;
@@ -280,6 +309,20 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
     });
   }
 
+  Future<void> _loadVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final version = info.buildNumber.isNotEmpty ? '${info.version}+${info.buildNumber}' : info.version;
+      if (mounted) {
+        setState(() {
+          _appVersion = version;
+        });
+      }
+    } catch (_) {
+      // best-effort only
+    }
+  }
+
   void _ensureWebSocket() {
     if (_wsChannel != null) return;
     try {
@@ -320,6 +363,36 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
     _wsChannel = null;
   }
 
+  Future<void> _showAuthError(BuildContext context, String message) async {
+    if (!mounted) return;
+    final dialogContext = _routerKey.currentContext ?? context;
+    await showDialog<void>(
+      context: dialogContext,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Google Sign-in Failed'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx, rootNavigator: true).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _pushEvent(Map<String, dynamic> event) {
+    if (!mounted) return;
+    setState(() {
+      _events.insert(0, event);
+      if (_events.length > 100) {
+        _events.removeRange(100, _events.length);
+      }
+      _unreadEvents += 1;
+    });
+  }
+
   void _showEvents(BuildContext context) {
     setState(() {
       _unreadEvents = 0;
@@ -343,6 +416,9 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
             final tournamentId = ev['tournamentId']?.toString();
             final ts = ev['timestamp']?.toString();
             final data = ev['data'];
+            final url = ev['url']?.toString();
+            final endpoint = ev['endpoint']?.toString();
+            final status = ev['statusCode']?.toString();
             return Card(
               margin: const EdgeInsets.symmetric(vertical: 6),
               child: Padding(
@@ -372,9 +448,14 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
                         )
                       ],
                     ),
-                    if (tournamentId != null) Text('Tournament: $tournamentId'),
-                    if (causedBy != null) Text('Caused by: $causedBy'),
-                    if (ts != null) Text('Time: $ts'),
+                    ...[
+                      if (url != null) Text('URL: $url', style: Theme.of(context).textTheme.bodySmall),
+                      if (endpoint != null) Text('Endpoint: $endpoint', style: Theme.of(context).textTheme.bodySmall),
+                      if (status != null) Text('Status: $status', style: Theme.of(context).textTheme.bodySmall),
+                      if (tournamentId != null) Text('Tournament: $tournamentId'),
+                      if (causedBy != null) Text('Caused by: $causedBy'),
+                      if (ts != null) Text('Time: $ts'),
+                    ],
                     if (data != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
@@ -454,6 +535,7 @@ class _AppScaffold extends StatelessWidget {
   final List<Map<String, dynamic>> events;
   final int unreadEvents;
   final VoidCallback? onShowEvents;
+  final String? appVersion;
   final Widget child;
 
   const _AppScaffold({
@@ -473,6 +555,7 @@ class _AppScaffold extends StatelessWidget {
     required this.events,
     required this.unreadEvents,
     this.onShowEvents,
+    this.appVersion,
     required this.child,
   });
 
@@ -565,15 +648,40 @@ class _AppScaffold extends StatelessWidget {
               ),
             ],
           ),
-          if (authLoading)
+          if (authLoading) ...[
             ModalBarrier(
               dismissible: false,
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withOpacity(0.35),
             ),
-          if (authLoading)
-            const Center(
-              child: CircularProgressIndicator(),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 12,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.key, size: 32),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Retrieving login token...',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    const CircularProgressIndicator(),
+                  ],
+                ),
+              ),
             ),
+          ],
         ],
       ),
       bottomNavigationBar: SafeArea(
@@ -594,6 +702,7 @@ class _AppScaffold extends StatelessWidget {
     final loggedIn = (userEmail ?? '').isNotEmpty || AuthService.instance.backendToken != null;
     final isMobile = _isMobile(context);
     final canSwitchRoles = userRole == 'ADMIN';
+    final versionText = 'Version: ${appVersion ?? 'unknown'}';
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: PopupMenuButton<String>(
@@ -628,7 +737,12 @@ class _AppScaffold extends StatelessWidget {
               const PopupMenuItem(
                 value: 'signin',
                 child: Text('Sign in with Google'),
-              )
+              ),
+              PopupMenuItem<String>(
+                value: 'version',
+                enabled: false,
+                child: Text(versionText),
+              ),
             ];
           }
           return [
@@ -684,6 +798,11 @@ class _AppScaffold extends StatelessWidget {
             const PopupMenuItem(
               value: 'home',
               child: Text('Home'),
+            ),
+            PopupMenuItem<String>(
+              value: 'version',
+              enabled: false,
+              child: Text(versionText),
             ),
             const PopupMenuItem(
               value: 'signout',

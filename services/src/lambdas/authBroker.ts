@@ -47,6 +47,11 @@ async function signJwt(payload: Record<string, any>): Promise<string> {
 
 export const handler = async (event: any) => {
   try {
+    logInfo('authBroker.start', {
+      hasBody: !!event?.body,
+      hasAuthHeader: !!(event?.headers?.authorization || event?.headers?.Authorization),
+      requestId: event?.requestContext?.requestId
+    });
     const body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body ?? {};
     const idToken =
       body.idToken ||
@@ -55,6 +60,7 @@ export const handler = async (event: any) => {
       event.headers?.Authorization?.replace(/^Bearer\s+/i, '');
     const accessToken = body.accessToken || body.access_token;
     if (!idToken && !accessToken) {
+      logError('authBroker.missingToken', { bodyKeys: Object.keys(body || {}) });
       return jsonResponse(400, { message: 'idToken or accessToken required' });
     }
 
@@ -65,18 +71,20 @@ export const handler = async (event: any) => {
 
     if (idToken) {
       const tokenInfoUrl = `${GOOGLE_TOKENINFO}?id_token=${encodeURIComponent(idToken)}`;
+      logInfo('authBroker.verifyIdToken', { url: tokenInfoUrl });
       const resp = await fetch(tokenInfoUrl);
       if (!resp.ok) {
         const text = await resp.text();
         logError('authBroker.googleValidationFailed', { status: resp.status, text });
         return jsonResponse(401, { message: 'Invalid Google token' });
       }
-      const info = await resp.json();
+      const info = (await resp.json()) as any;
       email = info.email as string | undefined;
       name = info.name as string | undefined;
       picture = info.picture as string | undefined;
       emailVerified = info.email_verified === 'true' || info.email_verified === true;
     } else if (accessToken) {
+      logInfo('authBroker.verifyAccessToken', { url: GOOGLE_USERINFO });
       const resp = await fetch(GOOGLE_USERINFO, {
         headers: { Authorization: `Bearer ${accessToken}` }
       });
@@ -85,7 +93,7 @@ export const handler = async (event: any) => {
         logError('authBroker.googleUserInfoFailed', { status: resp.status, text });
         return jsonResponse(401, { message: 'Invalid Google token' });
       }
-      const info = await resp.json();
+      const info = (await resp.json()) as any;
       email = info.email as string | undefined;
       name = info.name as string | undefined;
       picture = info.picture as string | undefined;
@@ -93,6 +101,7 @@ export const handler = async (event: any) => {
     }
 
     if (!email || !emailVerified) {
+      logError('authBroker.emailNotVerified', { email, emailVerified });
       return jsonResponse(401, { message: 'Email not verified or missing' });
     }
 
@@ -127,7 +136,7 @@ export const handler = async (event: any) => {
     logInfo('authBroker.issued', { email, role });
     return jsonResponse(200, { token, role, exp });
   } catch (err) {
-    logError('authBroker.failed', { error: String(err) });
+    logError('authBroker.failed', { error: String(err), stack: (err as Error)?.stack });
     return jsonResponse(500, { message: 'Authentication failed' });
   }
 };

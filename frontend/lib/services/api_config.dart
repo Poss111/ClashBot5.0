@@ -30,7 +30,7 @@ class ApiConfig {
 
   static String get baseUrl {
     final stage = _env == 'prod' ? '/prod' : '/dev';
-    return '$_origin/api$stage';
+    return '$_origin$stage';
   }
 }
 

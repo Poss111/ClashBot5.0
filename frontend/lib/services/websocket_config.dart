@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 
 class WebSocketConfig {
   // Set APP_ENV=prod in release builds; defaults to dev for local runs.
-  static const _env = String.fromEnvironment('APP_ENV', defaultValue: 'dev');
+  static const _env = String.fromEnvironment('APP_ENV', defaultValue: 'prod');
   // Optional override for non-web builds to force CloudFront origin.
   static const _cfWsOrigin = String.fromEnvironment('CLOUDFRONT_WS_ORIGIN', defaultValue: '');
   // Force mock origin (overrides base) when defined.
@@ -13,7 +13,7 @@ class WebSocketConfig {
       return _mockWsOrigin;
     }
 
-    if (!kIsWeb && _cfWsOrigin.isNotEmpty) {
+    if (_cfWsOrigin.isNotEmpty) {
       return _cfWsOrigin;
     }
 
@@ -22,15 +22,16 @@ class WebSocketConfig {
     if (base.hasAuthority && base.authority.isNotEmpty) {
       return '$scheme://${base.authority}';
     }
-    // fallback to deployed gateway host
-    return _env == 'prod'
-        ? 'wss://4a40u0p883.execute-api.us-east-1.amazonaws.com'
-        : 'wss://4a40u0p883.execute-api.us-east-1.amazonaws.com';
+    // Fallback: stay empty to force explicit origin configuration.
+    return _cfWsOrigin.isNotEmpty ? _cfWsOrigin : '';
   }
 
   static String get baseUrl {
     final stage = _env == 'prod' ? '/prod' : '/dev';
-    return '$_origin/events$stage';
+    if (_origin.isEmpty || _origin == 'null' || _origin.contains('cloudfront')) {
+      return '/events$stage';
+    }
+    return '$_origin$stage';
   }
 }
 

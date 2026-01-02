@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:clash_companion/services/logger.dart';
 import 'package:http/http.dart' as http;
 import '../models/tournament.dart';
 import 'api_config.dart';
@@ -19,12 +20,12 @@ class TournamentsService {
 
   Future<List<Tournament>> list() async {
     final endpoint = '$baseUrl/tournaments';
-    print("Endpoint to hit: $endpoint");
+    logDebug("Endpoint to hit: $endpoint");
     try {
       // Print out the repsonse body even on error
       // Do not follow redirects
       final response = await http.get(Uri.parse(endpoint), headers: _headers());
-      print("Response body: ${response.body}");
+      logDebug("Response body: ${response.body}");
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
         final items = data['items'] as List<dynamic>;
@@ -48,7 +49,7 @@ class TournamentsService {
       );
       throw Exception('Failed to load tournaments: ${response.statusCode}');
     } on HttpException catch (e) {
-      print("Got HttpException: ${e.message}");
+      logDebug("Got HttpException: ${e.message}");
       EventRecorder.record(
         type: 'api.error',
         message: e.message,
@@ -58,7 +59,7 @@ class TournamentsService {
       );
       rethrow;
     } catch (e) {
-      print("Got exception: ${e.toString()}");
+      logDebug("Got exception: ${e.toString()}");
       EventRecorder.record(
         type: 'api.error',
         message: e.toString(),

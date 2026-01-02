@@ -7,6 +7,7 @@ import * as lambdaNode from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigw from 'aws-cdk-lib/aws-apigateway';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigwv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import * as apigwv2Authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import * as secrets from 'aws-cdk-lib/aws-secretsmanager';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
@@ -366,12 +367,17 @@ export class ClashbotInfraStack extends Stack {
     });
 
     // WebSocket API
+    const wsAuthorizer = new apigwv2Authorizers.WebSocketLambdaAuthorizer('WsAuthorizer', authValidatorFn, {
+      identitySource: ['route.request.header.Authorization']
+    });
+
     const websocketApi = new apigwv2.WebSocketApi(this, 'ClashWebSocketApi', {
       connectRouteOptions: {
         integration: new apigwv2Integrations.WebSocketLambdaIntegration(
           'ConnectIntegration',
           websocketHandlerFn
-        )
+        ),
+        authorizer: wsAuthorizer
       },
       disconnectRouteOptions: {
         integration: new apigwv2Integrations.WebSocketLambdaIntegration(
@@ -501,21 +507,7 @@ function handler(event) {
             }
           ]
         }
-      },
-      errorResponses: [
-        {
-          httpStatus: 403,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
-          ttl: Duration.minutes(5)
-        },
-        {
-          httpStatus: 404,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
-          ttl: Duration.minutes(5)
-        }
-      ]
+      }
     });
 
     new CfnOutput(this, 'CloudFrontDomain', {

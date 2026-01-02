@@ -1,6 +1,7 @@
-import { APIGatewayTokenAuthorizerEvent } from 'aws-lambda';
+import { APIGatewayTokenAuthorizerEvent, APIGatewayRequestAuthorizerEvent } from 'aws-lambda';
 import { KMSClient, GetPublicKeyCommand } from '@aws-sdk/client-kms';
 import { createVerify } from 'crypto';
+import { logInfo } from '../shared/logger';
 
 const kmsClient = new KMSClient({});
 let cachedPublicKeyPem: string | null = null;
@@ -46,15 +47,25 @@ const denyPolicy = (principalId: string, resource: string) => ({
   context: {}
 });
 
-export const handler = async (event: APIGatewayTokenAuthorizerEvent) => {
-  const tokenString = event.authorizationToken;
+export const handler = async (event: APIGatewayTokenAuthorizerEvent | APIGatewayRequestAuthorizerEvent) => {
+  let tokenString: string | undefined;
+  logInfo('authValidator.received', { event });
+  if (event.type === 'TOKEN') {
+    logInfo('authValidator.token', { event });
+    tokenString = event.authorizationToken;
+  } else if (event.type === 'REQUEST') {
+    logInfo('authValidator.request', { event });
+    tokenString = event.headers?.authorization || (event.queryStringParameters as any)?.auth;
+  }
+
+  logInfo('authValidator.tokenString', { tokenString });
   const resource = event.methodArn;
 
   if (!tokenString?.startsWith('Bearer ')) {
     return denyPolicy('unauthorized', resource);
   }
 
-  const token = tokenString.replace('Bearer ', '');
+  const token = tokenString.replace(/^Bearer\s+/i, '');
   try {
     const [headerB64, payloadB64, sigB64] = token.split('.');
     if (!headerB64 || !payloadB64 || !sigB64) {

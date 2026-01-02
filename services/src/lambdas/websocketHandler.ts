@@ -21,27 +21,29 @@ export const handler = async (event: WebSocketEvent) => {
   const endpoint = `https://${event.requestContext.domainName}/${event.requestContext.stage}`;
   const apiGatewayClient = new ApiGatewayManagementApiClient({ endpoint });
 
+  logInfo('websocketHandler.received', { connectionId, routeKey, event });
+
   try {
     switch (routeKey) {
       case '$connect':
         await handleConnect(connectionId);
-        return { statusCode: 200 };
+        return { statusCode: 200, body: JSON.stringify({ message: 'Connected' }) };
 
       case '$disconnect':
         await handleDisconnect(connectionId);
-        return { statusCode: 200 };
+        return { statusCode: 200, body: JSON.stringify({ message: 'Disconnected' }) };
 
       case '$default':
         await handleMessage(connectionId, event.body, apiGatewayClient);
-        return { statusCode: 200 };
+        return { statusCode: 200, body: JSON.stringify({ message: 'Message received' }) };
 
       default:
         logError('websocketHandler.unknownRoute', { routeKey, connectionId });
-        return { statusCode: 404 };
+        return { statusCode: 404, body: JSON.stringify({ message: 'Unknown route' }) };
     }
   } catch (err) {
     logError('websocketHandler.error', { routeKey, connectionId, error: String(err) });
-    return { statusCode: 500 };
+    return { statusCode: 500, body: JSON.stringify({ message: 'Internal server error' }) };
   }
 };
 

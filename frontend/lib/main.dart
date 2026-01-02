@@ -1,10 +1,13 @@
 import 'dart:convert';
+import 'package:clash_companion/services/logger.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'screens/home_screen.dart';
 import 'screens/tournaments_list_screen.dart';
 import 'screens/teams_screen.dart';
@@ -13,6 +16,7 @@ import 'services/auth_service.dart';
 import 'services/websocket_config.dart';
 import 'services/event_recorder.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/io.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,6 +34,13 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
   bool _isDarkMode = false;
   final _routerKey = GlobalKey<NavigatorState>();
   late final GoRouter _router;
+  final _notifications = FlutterLocalNotificationsPlugin();
+  static const AndroidNotificationChannel _eventsChannel = AndroidNotificationChannel(
+    'clash_events',
+    'Clash Companion Events',
+    description: 'Notifications for tournament events',
+    importance: Importance.high,
+  );
   static const _prefsDisclaimerSeen = 'disclaimer_seen';
   String? _userEmail;
   String? _userName;
@@ -157,6 +168,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
       _loadUser();
       _maybeShowDisclaimer();
     });
+    _initNotifications();
     EventRecorder.register(_pushEvent);
     _loadVersion();
   }
@@ -194,7 +206,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
         }
       }
     } catch (e) {
-      print("Error signing in: $e");
+      logDebug("Error signing in: $e");
       await _showAuthError(context, 'Failed to sign in with Google. Please try again.');
       if (mounted) {
         setState(() {
@@ -262,7 +274,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
         }
       }
     } catch (e) {
-      print("Error signing in: $e");
+      logDebug("Error signing in: $e");
       await _showAuthError(context, 'Failed to sign in with Google. Please try again.');
       if (mounted) {
         setState(() {
@@ -325,8 +337,24 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
 
   void _ensureWebSocket() {
     if (_wsChannel != null) return;
+    Uri uri = Uri.parse(WebSocketConfig.baseUrl);
     try {
-      _wsChannel = WebSocketChannel.connect(Uri.parse(WebSocketConfig.baseUrl));
+      final token = AuthService.instance.backendToken;
+      Map<String, dynamic>? headers;
+      if (token != null) {
+        if (kIsWeb) {
+          final params = Map<String, String>.from(uri.queryParameters);
+          params['auth'] = token;
+          uri = uri.replace(queryParameters: params);
+        } else {
+          headers = {'authorization': 'Bearer $token'};
+        }
+      }
+      if (!kIsWeb && headers != null) {
+        _wsChannel = IOWebSocketChannel.connect(uri, headers: headers);
+      } else {
+        _wsChannel = WebSocketChannel.connect(uri);
+      }
       _wsChannel!.stream.listen((event) {
         if (!mounted) return;
         Map<String, dynamic> parsed = {
@@ -338,8 +366,8 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
           if (obj is Map<String, dynamic>) {
             parsed.addAll(obj);
           }
-        } catch (_) {
-          // keep raw
+        } catch (e) {
+          EventRecorder.record(type: 'ws.error', message: e.toString(), endpoint: 'GET /events', url: uri.toString(), statusCode: -1);
         }
         setState(() {
           _events.insert(0, parsed);
@@ -348,12 +376,15 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
           }
           _unreadEvents += 1;
         });
+        _maybeNotifyTournament(parsed);
       }, onError: (_) {
         _disposeWebSocket();
       }, onDone: () {
         _disposeWebSocket();
       });
-    } catch (_) {
+    } catch (e) {
+      logDebug("Error connecting to web socket: $e, uri: $uri");
+      EventRecorder.record(type: 'ws.error', message: e.toString(), endpoint: 'GET /events', url: uri.toString(), statusCode: -1);
       _disposeWebSocket();
     }
   }
@@ -361,6 +392,51 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
   void _disposeWebSocket() {
     _wsChannel?.sink.close();
     _wsChannel = null;
+  }
+
+  Future<void> _initNotifications() async {
+    if (kIsWeb) return;
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const initSettings = InitializationSettings(android: androidInit);
+    await _notifications.initialize(initSettings);
+    final androidImpl =
+        _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    if (androidImpl != null) {
+      try {
+        logDebug("Requesting notifications permission");
+        final granted = await androidImpl.requestNotificationsPermission();
+        logDebug("Notifications permission granted: $granted");
+        if (granted ?? false) {
+          await androidImpl.createNotificationChannel(_eventsChannel);
+        }
+      } catch (_) {
+        // Older plugin versions may not support permission API; still attempt channel creation.
+        await androidImpl.createNotificationChannel(_eventsChannel);
+      }
+    }
+  }
+
+  Future<void> _maybeNotifyTournament(Map<String, dynamic> ev) async {
+    if (kIsWeb) return;
+    final type = ev['type']?.toString().toLowerCase() ?? '';
+    if (!type.contains('tournament')) return;
+    final name = ev['name'] ?? ev['tournamentId'] ?? 'New tournament';
+    final status = ev['status'] ?? ev['newStatus'] ?? ev['phase'];
+    final body = status != null ? '$name · status: $status' : name.toString();
+    await _notifications.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      'Tournament update',
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _eventsChannel.id,
+          _eventsChannel.name,
+          channelDescription: _eventsChannel.description,
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      ),
+    );
   }
 
   Future<void> _showAuthError(BuildContext context, String message) async {
@@ -384,6 +460,11 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
 
   void _pushEvent(Map<String, dynamic> event) {
     if (!mounted) return;
+    // Only keep api.* events in debug builds; always keep other events (e.g., websocket).
+    final type = event['type']?.toString() ?? '';
+    if (!kDebugMode && type.startsWith('api.')) {
+      return;
+    }
     setState(() {
       _events.insert(0, event);
       if (_events.length > 100) {
@@ -414,6 +495,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
             final title = (ev['type'] ?? 'event').toString();
             final causedBy = ev['causedBy']?.toString();
             final tournamentId = ev['tournamentId']?.toString();
+            final message = ev['message']?.toString();
             final ts = ev['timestamp']?.toString();
             final data = ev['data'];
             final url = ev['url']?.toString();
@@ -450,6 +532,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
                     ),
                     ...[
                       if (url != null) Text('URL: $url', style: Theme.of(context).textTheme.bodySmall),
+                      if (message != null) Text(message, style: Theme.of(context).textTheme.bodySmall),
                       if (endpoint != null) Text('Endpoint: $endpoint', style: Theme.of(context).textTheme.bodySmall),
                       if (status != null) Text('Status: $status', style: Theme.of(context).textTheme.bodySmall),
                       if (tournamentId != null) Text('Tournament: $tournamentId'),

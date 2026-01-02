@@ -9,6 +9,6 @@
   "scripts": {
     "bootstrap": "cd infra && npm install",
     "lint": "echo \"add linters\"",
-    "deploy:ui": "cd frontend && flutter build web && aws s3 sync frontend/build/web s3://$FRONTEND_BUCKET --delete"
+    "deploy:ui": "pushd frontend && flutter build web && popd && aws s3 sync frontend/build/web s3://$FRONTEND_BUCKET --delete --profile PowerUserAccess-816923827429"
   }
 }

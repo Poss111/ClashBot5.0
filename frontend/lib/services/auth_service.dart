@@ -1,7 +1,8 @@
-import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_broker_service.dart';
+import 'logger.dart';
 
 class AuthService {
   AuthService._internal();
@@ -24,7 +25,7 @@ class AuthService {
     // For Android/iOS, pass the web client ID as serverClientId; web uses the web client ID.
     final clientId = kIsWeb ? _webClientId : null;
     final serverId = kIsWeb ? null : _webClientId;
-    print("Client ID: $clientId serverId: $serverId");
+    logDebug("Client ID: $clientId serverId: $serverId");
     _googleSignIn ??= GoogleSignIn(
       clientId: clientId,
       serverClientId: serverId,
@@ -36,7 +37,7 @@ class AuthService {
   Future<GoogleSignInAccount?> signIn({bool interactive = false}) async {
     // If MOCK_AUTH is enabled, skip Google and use injected token/role.
     if (const bool.fromEnvironment('MOCK_AUTH', defaultValue: false)) {
-      print("Signing in with mock auth");
+      logDebug("Signing in with mock auth");
       backendToken = const String.fromEnvironment('MOCK_TOKEN', defaultValue: 'mock-jwt-token');
       backendRole = const String.fromEnvironment('MOCK_ROLE', defaultValue: 'GENERAL_USER');
       // We don't fabricate a GoogleSignInAccount; UI will treat backendToken as logged-in.
@@ -45,20 +46,20 @@ class AuthService {
       return currentUser;
     }
     // Try restoring an existing backend session first to avoid a Google prompt.
-    print("Restoring existing backend session");
+    logDebug("Restoring existing backend session");
     await _restoreBackendSession();
-    print("Restored existing backend session: $backendToken");
+    logDebug("Restored existing backend session: $backendToken");
     final hasBackendSession = backendToken != null;
-    print("Has backend session: $hasBackendSession");
+    logDebug("Has backend session: $hasBackendSession");
 
     final client = _client();
 
     // Always attempt silent sign-in to refresh profile if possible, but ignore errors.
     try {
       currentUser = await client.signInSilently();
-      print("Signed in silently: ${currentUser?.displayName}");
+      logDebug("Signed in silently: ${currentUser?.displayName}");
     } catch (e) {
-      print("Error signing in silently: $e");
+      logDebug("Error signing in silently: $e");
     }
 
     // If we already have a backend session and we're not in interactive mode, skip prompting.
@@ -68,43 +69,43 @@ class AuthService {
 
     // If no user yet, only prompt when interactive is allowed.
     if (currentUser == null && interactive) {
-      print("Signing in interactively");
+      logDebug("Signing in interactively");
       try {
         currentUser = await client.signIn();
       } catch (e) {
-        print("Error signing in interactively: $e");
+        logDebug("Error signing in interactively: $e");
         rethrow;
       }
-      print("Signed in interactively: ${currentUser?.displayName}");
+      logDebug("Signed in interactively: ${currentUser?.displayName}");
     }
 
-    print("Current user: ${currentUser?.displayName}");
+    logDebug("Current user: ${currentUser?.displayName}");
     if (currentUser != null) {
-      print("Current user is not null");
+      logDebug("Current user is not null");
       final auth = await currentUser!.authentication;
-      print("Authentication: ${auth.idToken}");
+      logDebug("Authentication: ${auth.idToken}");
       final idToken = auth.idToken;
-      print("ID Token: $idToken");
+      logDebug("ID Token: $idToken");
       final accessToken = auth.accessToken;
-      print("Access Token: $accessToken");
+      logDebug("Access Token: $accessToken");
       // Fallback: if neither present, try to get an auth code and treat as access token
       final tokenToUse = idToken ?? accessToken ?? currentUser!.serverAuthCode;
-      print("Trying to exchange token...");
+      logDebug("Trying to exchange token...");
       if (tokenToUse != null) {
-        print("We have a token to use");
+        logDebug("We have a token to use");
         final broker = AuthBrokerService();
-        print("Exchanging token: $tokenToUse");
+        logDebug("Exchanging token: $tokenToUse");
         final result = await broker.exchange(idToken: idToken, accessToken: tokenToUse);
-        print("Exchange result: $result");
+        logDebug("Exchange result: $result");
         backendToken = result.token;
         backendRole = result.role;
-        print("Backend token: $backendToken");
-        print("Backend role: $backendRole");
+        logDebug("Backend token: $backendToken");
+        logDebug("Backend role: $backendRole");
         await _persistBackendSession();
-        print("Persisted backend session");
+        logDebug("Persisted backend session");
       }
     } else if (!interactive && backendToken != null) {
-      print("Silent sign-in failed and we're relying only on a cached token, clearing it");
+      logDebug("Silent sign-in failed and we're relying only on a cached token, clearing it");
       // If silent sign-in failed and we're relying only on a cached token, clear it to avoid showing logged-in state.
       await signOut();
       throw Exception('Silent sign-in failed; cleared cached session');
@@ -151,5 +152,6 @@ class AuthService {
     final isMock = const bool.fromEnvironment('MOCK_AUTH', defaultValue: false);
     await prefs.setBool(_prefsMockKey, isMock);
   }
+
 }
 

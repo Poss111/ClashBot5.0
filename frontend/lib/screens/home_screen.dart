@@ -83,16 +83,12 @@ class HomeScreen extends StatelessWidget {
     final features = [
       {
         'title': 'Know when the next Tournament is!',
-        'description': 'We pull upcoming tournaments from Riot and display them here.',
+        'description': 'We pull upcoming tournaments from Riot and notify you.',
       },
       {
-        'title': 'Theory craft',
+        'title': 'Build your team ahead of time!',
         'description': 'Draft comps, swap roles, and sanity-check your roster before Riot opens registrations.',
-      },
-      {
-        'title': 'Balance teams faster',
-        'description': 'Match roles quickly so every lineup is ready before registrations open in Riot.',
-      },
+      }
     ];
 
     return LayoutBuilder(

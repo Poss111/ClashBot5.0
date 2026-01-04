@@ -12,13 +12,16 @@ import 'screens/home_screen.dart';
 import 'screens/tournaments_list_screen.dart';
 import 'screens/teams_screen.dart';
 import 'screens/admin_screen.dart';
+import 'screens/settings_screen.dart';
 import 'services/auth_service.dart';
 import 'services/websocket_config.dart';
 import 'services/event_recorder.dart';
 import 'services/tournaments_service.dart';
+import 'services/user_service.dart';
 import 'theme.dart';
 import 'models/notification_item.dart';
 import 'models/notification_presentation.dart';
+import 'models/user_profile.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
 
@@ -46,6 +49,8 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
     importance: Importance.high,
   );
   static const _prefsDisclaimerSeen = 'disclaimer_seen';
+  final _userService = UserService();
+  String? _userId;
   String? _userEmail;
   String? _userName;
   String? _userAvatar;
@@ -111,7 +116,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
             appVersion: _appVersion,
             onShowEvents: () => _showEvents(context),
           allowUnauthed: true,
-          child: TournamentsListScreen(userEmail: _userEmail),
+          child: TournamentsListScreen(userEmail: _userId),
           ),
         ),
         GoRoute(
@@ -136,7 +141,39 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
             onShowEvents: () => _showEvents(context),
             child: _authFailed
                 ? const _UnauthorizedScreen(message: 'Sign-in required')
-                : TeamsScreen(userEmail: _userEmail),
+                : TeamsScreen(userEmail: _userId, userDisplayName: _userName),
+          ),
+        ),
+        GoRoute(
+          path: '/settings',
+          builder: (context, state) => _AppScaffold(
+            isDarkMode: _isDarkMode,
+            onToggleTheme: _toggleTheme,
+            onSignIn: _signIn,
+            onSignOut: _signOut,
+            userEmail: _userEmail,
+            userName: _userName,
+            userAvatar: _userAvatar,
+            userRole: _userRole,
+            effectiveRole: _effectiveRole ?? _userRole,
+            onRoleChange: _setEffectiveRole,
+            authLoading: _authLoading,
+            authFailed: _authFailed,
+            isHome: false,
+            events: _events,
+            unreadEvents: _unreadEvents,
+            appVersion: _appVersion,
+            onShowEvents: () => _showEvents(context),
+            child: _authFailed
+                ? const _UnauthorizedScreen(message: 'Sign-in required')
+                : SettingsScreen(
+                    initialDisplayName: _userName,
+                    onDisplayNameChanged: (value) async {
+                      setState(() {
+                        _userName = value;
+                      });
+                    },
+                  ),
           ),
         ),
         GoRoute(
@@ -188,17 +225,26 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
   }
 
   Future<void> _loadUser() async {
+    await _hydrateUser(interactive: false);
+  }
+
+  Future<void> _hydrateUser({required bool interactive}) async {
     setState(() {
       _authLoading = true;
       _authFailed = false;
     });
     try {
-      final user = await AuthService.instance.signIn(); // attempt silent sign-in only
+      final user = await AuthService.instance.signIn(interactive: interactive);
       final token = AuthService.instance.backendToken;
+      UserProfile? profile;
+      if (token != null) {
+        profile = await _loadProfileAndEnsureDisplayName(suggestedName: user?.displayName);
+      }
       if (mounted) {
         setState(() {
-          _userEmail = token != null ? user?.email : null;
-          _userName = token != null ? user?.displayName : null;
+          _userId = token != null ? profile?.userId ?? user?.email : null;
+          _userEmail = token != null ? profile?.email ?? user?.email : null;
+          _userName = token != null ? profile?.displayName ?? user?.displayName : null;
           _userAvatar = token != null ? user?.photoUrl : null;
           _userRole = token != null ? AuthService.instance.backendRole : null;
           _effectiveRole = _userRole;
@@ -208,6 +254,9 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
           _ensureWebSocket();
         } else {
           _disposeWebSocket();
+          if (interactive) {
+            await _showAuthError(context, 'Failed to sign in with Google. Please try again.');
+          }
         }
       }
     } catch (e) {
@@ -225,6 +274,102 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
         });
       }
     }
+  }
+
+  bool _needsDisplayName(UserProfile? profile) {
+    final name = profile?.displayName?.trim() ?? '';
+    return name.isEmpty;
+  }
+
+  bool _isValidDisplayName(String value) {
+    final trimmed = value.trim();
+    if (trimmed.length < 3 || trimmed.length > 32) return false;
+    if (trimmed.contains('@')) return false;
+    final regex = RegExp(r"^[a-zA-Z0-9 _.'-]+$");
+    return regex.hasMatch(trimmed);
+  }
+
+  Future<UserProfile?> _loadProfileAndEnsureDisplayName({String? suggestedName}) async {
+    try {
+      var profile = await _userService.getCurrentUser();
+      if (_needsDisplayName(profile)) {
+        final updated = await _promptForDisplayName(suggestedName: suggestedName ?? profile.name ?? profile.email);
+        if (updated != null) {
+          profile = updated;
+        }
+      }
+      return profile;
+    } catch (e) {
+      logDebug("Failed to load profile: $e");
+      return null;
+    }
+  }
+
+  Future<UserProfile?> _promptForDisplayName({String? suggestedName}) async {
+    if (!mounted) return null;
+    final controller = TextEditingController(text: suggestedName?.trim() ?? '');
+    String? errorText;
+    UserProfile? updated;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            return AlertDialog(
+              title: const Text('Choose a display name'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Pick a name other players will see. Your email stays private.'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: 'Display name',
+                      helperText: '3-32 characters, no emails',
+                      errorText: errorText,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final value = controller.text.trim();
+                    if (!_isValidDisplayName(value)) {
+                      setState(() {
+                        errorText = 'Use 3-32 letters/numbers and avoid emails';
+                      });
+                      return;
+                    }
+                    try {
+                      updated = await _userService.setDisplayName(value);
+                      if (context.mounted) {
+                        Navigator.of(ctx).pop();
+                      }
+                    } catch (err) {
+                      setState(() {
+                        errorText = 'Failed to save name: $err';
+                      });
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    controller.dispose();
+    return updated;
   }
 
   Future<void> _maybeShowDisclaimer() async {
@@ -252,63 +397,25 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
   }
 
   Future<void> _signIn() async {
-    setState(() {
-      _authLoading = true;
-      _authFailed = false;
-    });
-    try {
-      final user = await AuthService.instance.signIn(interactive: true); // allow prompt on manual sign-in
-      final token = AuthService.instance.backendToken;
-      if (mounted) {
-        setState(() {
-          _userEmail = token != null ? user?.email : null;
-          _userName = token != null ? user?.displayName : null;
-          _userAvatar = token != null ? user?.photoUrl : null;
-          _userRole = token != null ? AuthService.instance.backendRole : null;
-          _effectiveRole = _userRole;
-          _authFailed = token == null;
-        });
-        if (token != null) {
-          _ensureWebSocket();
-        } else {
-          _disposeWebSocket();
-        }
-        if (token == null) {
-          // Sign-in attempt completed but we didn't get a token.
-          await _showAuthError(context, 'Failed to sign in with Google. Please try again.');
-        }
-      }
-    } catch (e) {
-      logDebug("Error signing in: $e");
-      await _showAuthError(context, 'Failed to sign in with Google. Please try again.');
-      if (mounted) {
-        setState(() {
-          _authFailed = true;
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _authLoading = false;
-        });
-      }
-    }
+    await _hydrateUser(interactive: true);
   }
 
   Future<void> _signOut() async {
     await AuthService.instance.signOut();
     if (mounted) {
       setState(() {
+        _authFailed = true;
+        _userId = null;
         _userEmail = null;
         _userName = null;
         _userAvatar = null;
         _userRole = null;
         _effectiveRole = null;
-        _authFailed = false;
         _events.clear();
         _unreadEvents = 0;
       });
       _disposeWebSocket();
+      _router.go('/');
     }
   }
 
@@ -423,23 +530,23 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
 
   Future<void> _maybeNotifyTournament(AppNotification ev) async {
     if (kIsWeb) return;
-    final type = ev.type?.toString().toLowerCase() ?? '';
+    final type = ev.type.toLowerCase();
     if (type != 'tournament.registered') return;
     final parsedName = ev.data?['nameKeySecondary'];
-    final startTime = ev.data?['startTime'];
-    final registrationTime = ev.data?['registrationTime'];
+    final startTime = ev.data?['startTime'] as String?;
+    final registrationTime = ev.data?['registrationTime'] as String?;
     var formattedStartTime = '';
-    if (startTime != null || startTime.isNotEmpty) {
+    if ((startTime ?? '').isNotEmpty) {
       try {
-        formattedStartTime = AppDateFormats.formatLong(DateTime.parse(startTime).toLocal());
+        formattedStartTime = AppDateFormats.formatLong(DateTime.parse(startTime!).toLocal());
       } catch (e) {
         logDebug("Error parsing startTime: $e");
       }
     }
     var formattedRegistrationTime = '';
-    if (registrationTime != null || registrationTime.isNotEmpty) {
+    if ((registrationTime ?? '').isNotEmpty) {
       try {
-        formattedRegistrationTime = AppDateFormats.formatLong(DateTime.parse(registrationTime).toLocal());
+        formattedRegistrationTime = AppDateFormats.formatLong(DateTime.parse(registrationTime!).toLocal());
       } catch (e) {
         logDebug("Error parsing registrationTime: $e");
       }
@@ -841,23 +948,27 @@ class _AppScaffold extends StatelessWidget {
                   ],
                 ),
               ),
-            if ((effectiveRole ?? userRole) == 'ADMIN')
-              const PopupMenuItem(
-                value: 'admin',
-                child: Text('Admin'),
-              ),
+            PopupMenuItem(
+              value: 'settings',
+              child: const Text('Settings'),
+              onTap: () {
+                // Delay navigation to after menu closes.
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                  }
+                  GoRouter.of(context).go('/settings');
+                });
+              },
+            ),
             const PopupMenuItem(
-              value: 'home',
-              child: Text('Home'),
+              value: 'signout',
+              child: Text('Sign out'),
             ),
             PopupMenuItem<String>(
               value: 'version',
               enabled: false,
               child: Text(versionText),
-            ),
-            const PopupMenuItem(
-              value: 'signout',
-              child: Text('Sign out'),
             ),
           ];
         },

@@ -9,9 +9,12 @@ class Team {
   final String tournamentId;
   final String? displayName;
   final String? captainSummoner;
-  Map<String, dynamic>? members;
-  final String? status;
+  final String? captainDisplayName;
   final String? createdBy;
+  final String? createdByDisplayName;
+  Map<String, String>? members;
+  Map<String, String>? memberDisplayNames;
+  final String? status;
   final String? createdAt;
 
   Team({
@@ -19,9 +22,12 @@ class Team {
     required this.tournamentId,
     this.displayName,
     this.captainSummoner,
+    this.captainDisplayName,
+    this.createdBy,
+    this.createdByDisplayName,
     this.members,
     this.status,
-    this.createdBy,
+    this.memberDisplayNames,
     this.createdAt,
   });
 
@@ -30,9 +36,14 @@ class Team {
         tournamentId: json['tournamentId'] as String,
         displayName: json['displayName'] as String?,
         captainSummoner: json['captainSummoner'] as String?,
-        members: (json['members'] as Map<String, dynamic>?) ?? {},
-        status: json['status'] as String?,
+        captainDisplayName: json['captainDisplayName'] as String?,
         createdBy: json['createdBy'] as String?,
+        createdByDisplayName: json['createdByDisplayName'] as String?,
+        members: (json['members'] as Map<String, dynamic>?)
+            ?.map((key, value) => MapEntry(key, value?.toString() ?? '')),
+        memberDisplayNames: (json['memberDisplayNames'] as Map<String, dynamic>?)
+            ?.map((key, value) => MapEntry(key, value?.toString() ?? '')),
+        status: json['status'] as String?,
         createdAt: json['createdAt'] as String?,
       );
 }

@@ -195,6 +195,7 @@ export class ClashbotInfraStack extends Stack {
     const registrationsApiFn = createLambda('RegistrationsApiFn', 'registrationsApi.ts');
     const teamsApiFn = createLambda('TeamsApiFn', 'teamsApi.ts');
     const assignRoleFn = createLambda('AssignRoleFn', 'assignRole.ts');
+    const usersApiFn = createLambda('UsersApiFn', 'usersApi.ts');
     const authBrokerFn = createLambda('AuthBrokerFn', 'authBroker.ts');
     const authValidatorFn = createLambda('AuthValidatorFn', 'authValidator.ts');
 
@@ -372,6 +373,13 @@ export class ClashbotInfraStack extends Stack {
     authResource.addResource('token').addMethod('POST', new apigw.LambdaIntegration(authBrokerFn), {
       authorizationType: apigw.AuthorizationType.NONE
     });
+
+    const usersResource = api.root.addResource('users');
+    const meResource = usersResource.addResource('me');
+    meResource.addMethod('GET', new apigw.LambdaIntegration(usersApiFn), { authorizer });
+    meResource
+      .addResource('display-name')
+      .addMethod('PUT', new apigw.LambdaIntegration(usersApiFn), { authorizer });
 
     // WebSocket API
     const wsAuthorizer = new apigwv2Authorizers.WebSocketLambdaAuthorizer('WsAuthorizer', authValidatorFn, {

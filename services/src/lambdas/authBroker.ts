@@ -1,4 +1,4 @@
-import { PutCommand } from '@aws-sdk/lib-dynamodb';
+import { PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { KMSClient, SignCommand } from '@aws-sdk/client-kms';
 import { docClient } from '../shared/db';
 import { jsonResponse } from '../shared/http';
@@ -118,23 +118,36 @@ export const handler = async (event: any) => {
       exp
     });
 
+    const existing = await docClient.send(
+      new GetCommand({
+        TableName: process.env.USERS_TABLE,
+        Key: { userId: email }
+      })
+    );
+    const wasNewUser = !existing.Item;
+    const existingDisplayName = (existing.Item as any)?.displayName as string | undefined;
+    const timestamp = new Date().toISOString();
+
     await docClient.send(
       new PutCommand({
         TableName: process.env.USERS_TABLE,
         Item: {
           userId: email,
+          email,
           role,
           provider: 'google',
           emailVerified,
           name,
           picture,
-          lastLogin: new Date().toISOString()
+          displayName: existingDisplayName,
+          lastLogin: timestamp,
+          createdAt: (existing.Item as any)?.createdAt ?? timestamp
         }
       })
     );
 
-    logInfo('authBroker.issued', { email, role });
-    return jsonResponse(200, { token, role, exp });
+    logInfo('authBroker.issued', { email, role, wasNewUser });
+    return jsonResponse(200, { token, role, exp, isNewUser: wasNewUser, hasDisplayName: !!existingDisplayName, displayName: existingDisplayName });
   } catch (err) {
     logError('authBroker.failed', { error: String(err), stack: (err as Error)?.stack });
     return jsonResponse(500, { message: 'Authentication failed' });

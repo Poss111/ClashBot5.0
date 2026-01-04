@@ -16,11 +16,61 @@ const STAGE = process.env.STAGE || '/dev'; // should match APP_ENV stage in the 
 // In-memory mock data
 const tournaments = new Map();
 const teams = new Map(); // key: tournamentId -> list of teams
+const users = new Map(); // key: userId/email -> profile
+
+function maskIdentifier(value) {
+  if (!value) return 'Player';
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  const code = hash.toString(16).padStart(6, '0').slice(0, 6);
+  return `Player-${code}`;
+}
+
+function ensureUser(userId, displayName) {
+  if (!users.has(userId)) {
+    users.set(userId, {
+      userId,
+      email: userId,
+      displayName: displayName || 'Mock Player',
+      lastLogin: new Date().toISOString(),
+      createdAt: new Date().toISOString()
+    });
+  }
+  const existing = users.get(userId);
+  if (displayName && displayName.trim()) {
+    existing.displayName = displayName.trim();
+  }
+  return existing;
+}
+
+function displayNameFor(userId) {
+  if (!userId || userId === 'Open') return null;
+  const profile = users.get(userId);
+  return profile?.displayName || maskIdentifier(userId);
+}
+
+function withDisplayNames(team) {
+  const memberDisplayNames = {};
+  Object.entries(team.members || {}).forEach(([role, member]) => {
+    const label = displayNameFor(member);
+    if (label) memberDisplayNames[role] = label;
+  });
+  return {
+    ...team,
+    captainDisplayName: displayNameFor(team.captainSummoner),
+    createdByDisplayName: displayNameFor(team.createdBy),
+    memberDisplayNames
+  };
+}
 
 function seed() {
   const reg = new Date(Date.now() + 60 * 60 * 1000).toISOString();
   const start = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
   const now = new Date();
+
+  ensureUser('mock@user', 'Mock Player');
 
   const upcoming = {
     tournamentId: 'tourn-1',
@@ -118,7 +168,8 @@ function withAuth(req, res, next) {
     req.user = null;
     return next();
   }
-  req.user = { email: 'mock@user', role: 'GENERAL_USER' };
+  const profile = ensureUser('mock@user', 'Mock Player');
+  req.user = { email: profile.email, role: 'GENERAL_USER', displayName: profile.displayName };
   return next();
 }
 
@@ -130,6 +181,39 @@ router.post('/auth/token', (req, res) => {
     token: 'mock-jwt-token',
     role: 'GENERAL_USER',
     exp: Math.floor(Date.now() / 1000) + 60 * 60 * 12
+  });
+});
+
+router.get('/users/me', withAuth, (req, res) => {
+  if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+  const profile = ensureUser(req.user.email, req.user.displayName);
+  return res.json({
+    userId: profile.userId,
+    email: profile.email,
+    displayName: profile.displayName,
+    name: profile.displayName,
+    createdAt: profile.createdAt,
+    lastLogin: profile.lastLogin,
+    role: 'GENERAL_USER'
+  });
+});
+
+router.put('/users/me/display-name', withAuth, (req, res) => {
+  if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+  const desired = (req.body?.displayName || '').trim();
+  const valid = desired.length >= 3 && desired.length <= 32 && /^[a-zA-Z0-9 _.'-]+$/.test(desired) && !desired.includes('@');
+  if (!valid) {
+    return res.status(400).json({ message: 'displayName must be 3-32 characters and not an email' });
+  }
+  const profile = ensureUser(req.user.email, desired);
+  return res.json({
+    userId: profile.userId,
+    email: profile.email,
+    displayName: profile.displayName,
+    name: profile.displayName,
+    createdAt: profile.createdAt,
+    lastLogin: new Date().toISOString(),
+    role: 'GENERAL_USER'
   });
 });
 
@@ -196,12 +280,13 @@ router.post('/tournaments/:id/registrations', withAuth, (req, res) => {
 });
 
 router.get('/tournaments/:id/teams', withAuth, (req, res) => {
-  const list = teams.get(req.params.id) || [];
+  const list = (teams.get(req.params.id) || []).map(withDisplayNames);
   res.json({ items: list });
 });
 
 router.post('/tournaments/:id/teams', withAuth, (req, res) => {
   if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+  const profile = ensureUser(req.user.email, req.user.displayName);
   const body = req.body || {};
   const displayName = (body.displayName || body.teamName || '').trim();
   const role = (body.role || '').trim();
@@ -230,7 +315,13 @@ router.post('/tournaments/:id/teams', withAuth, (req, res) => {
   list.push(item);
   teams.set(req.params.id, list);
 
-  return res.status(201).json(item);
+  const label = displayNameFor(profile.userId);
+  return res.status(201).json({
+    ...item,
+    captainDisplayName: label,
+    createdByDisplayName: label,
+    memberDisplayNames: { [role]: label }
+  });
 });
 
 router.delete('/tournaments/:id/teams/:teamId', withAuth, (req, res) => {
@@ -253,6 +344,7 @@ router.post('/tournaments/:id/teams/:teamId/roles/:role', withAuth, (req, res) =
   const roleKey = req.params.role;
   const current = team.members?.[roleKey];
   const playerId = req.body?.playerId || 'mock-player';
+  ensureUser(playerId);
 
   // Allow swap: if user already on team in another role, clear that role first.
   const existingRole = Object.entries(team.members || {}).find(([, v]) => v === playerId)?.[0];
@@ -269,7 +361,7 @@ router.post('/tournaments/:id/teams/:teamId/roles/:role', withAuth, (req, res) =
     team.members[existingRole] = 'Open';
   }
   team.members[roleKey] = playerId;
-  return res.json({ teamId: team.teamId, role: roleKey, playerId });
+  return res.json({ teamId: team.teamId, role: roleKey, playerId, playerDisplayName: displayNameFor(playerId) });
 });
 
 router.delete('/tournaments/:id/teams/:teamId/roles/:role', withAuth, (req, res) => {

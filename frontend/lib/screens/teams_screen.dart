@@ -7,7 +7,8 @@ import '../services/teams_service.dart';
 
 class TeamsScreen extends StatefulWidget {
   final String? userEmail;
-  const TeamsScreen({super.key, this.userEmail});
+  final String? userDisplayName;
+  const TeamsScreen({super.key, this.userEmail, this.userDisplayName});
 
   @override
   State<TeamsScreen> createState() => _TeamsScreenState();
@@ -73,6 +74,33 @@ class _TeamsScreenState extends State<TeamsScreen> {
   String? get _currentUserId {
     final email = widget.userEmail?.trim() ?? '';
     return email.isEmpty ? null : email;
+  }
+
+  String? get _currentUserDisplayName {
+    final name = widget.userDisplayName?.trim() ?? '';
+    return name.isEmpty ? null : name;
+  }
+
+  String _maskIdentifier(String? value) {
+    if (value == null || value.isEmpty || value == 'Open') return 'Player';
+    var hash = 0;
+    for (var i = 0; i < value.length; i++) {
+      hash = (hash * 31 + value.codeUnitAt(i)) & 0x7fffffff;
+    }
+    final code = hash.toRadixString(16).padLeft(6, '0').substring(0, 6);
+    return 'Player-$code';
+  }
+
+  String _labelForUser(String? userId, String? displayName) {
+    if (displayName != null && displayName.trim().isNotEmpty) return displayName.trim();
+    return _maskIdentifier(userId);
+  }
+
+  String _memberLabel(Team team, String role) {
+    final existing = (team.members ?? {})[role];
+    if (existing == null || existing == 'Open') return 'Open';
+    final display = team.memberDisplayNames?[role];
+    return _labelForUser(existing, display);
   }
 
   Future<void> _refreshTeams(String tournamentId) async {
@@ -169,8 +197,11 @@ class _TeamsScreenState extends State<TeamsScreen> {
         });
         for (final k in toClear) {
           team.members![k] = 'Open';
+          team.memberDisplayNames?.remove(k);
         }
         team.members![role] = pid;
+        team.memberDisplayNames ??= {};
+        team.memberDisplayNames![role] = _currentUserDisplayName ?? _maskIdentifier(pid);
         _busyTeamId = null;
         _busyRole = null;
       });
@@ -349,12 +380,14 @@ class _TeamsScreenState extends State<TeamsScreen> {
       _kickingKey = key;
     });
     try {
+      final removedLabel = _labelForUser(playerId, team.memberDisplayNames?[role]);
       await teamsService.removeMember(t.tournamentId, team.teamId, role);
       setState(() {
         team.members ??= {};
         team.members![role] = 'Open';
+        team.memberDisplayNames?.remove(role);
       });
-      _showSnack('Removed $playerId from $role');
+      _showSnack('Removed $removedLabel from $role');
     } catch (e) {
       _showSnack('Failed to remove member: $e', isError: true);
     } finally {
@@ -597,7 +630,10 @@ class _TeamsScreenState extends State<TeamsScreen> {
                                                       const Icon(Icons.military_tech, size: 18),
                                                       const SizedBox(width: 6),
                                                       Expanded(
-                                                        child: Text(team.captainSummoner ?? 'n/a'),
+                                                        child: Text(
+                                                          team.captainDisplayName ??
+                                                              _maskIdentifier(team.captainSummoner),
+                                                        ),
                                                       ),
                                                     ],
                                                   ),
@@ -605,7 +641,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
                                               ),
                                               const SizedBox(height: 8),
                                               ..._roleOrder.map((role) {
-                                                final existing = members[role] as String?;
+                                                final existing = members[role];
                                                 final icon = _roleIcon(role);
                                                 final isBusy = _busyTeamId == team.teamId && _busyRole == role;
                                                 final teamBusy = _busyTeamId == team.teamId && _busyRole != role;
@@ -614,6 +650,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
                                                 final isSelf = existing != null && existing == _currentUserId;
                                                 final userOnAnotherRoleSameTeam =
                                                     userInThisTeam && (existing == null || existing != _currentUserId);
+                                                final memberLabel = _memberLabel(team, role);
                                                 return ListTile(
                                                   dense: true,
                                                   leading: icon != null ? Icon(icon, size: 20) : null,
@@ -639,7 +676,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
                                                       : Row(
                                                           mainAxisSize: MainAxisSize.min,
                                                           children: [
-                                                            Text(existing),
+                                                            Text(memberLabel),
                                                             if (isCaptain && !isSelf)
                                                               IconButton(
                                                                 tooltip: 'Remove player',

@@ -3,6 +3,30 @@ import { docClient } from '../shared/db';
 import { jsonResponse } from '../shared/http';
 import { logError, logInfo } from '../shared/logger';
 
+const USERS_TABLE = process.env.USERS_TABLE;
+
+const maskIdentifier = (value: string | undefined): string | null => {
+  if (!value) return null;
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  const code = hash.toString(16).padStart(6, '0').slice(0, 6);
+  return `Player-${code}`;
+};
+
+const lookupDisplayName = async (userId: string | undefined): Promise<string | null> => {
+  if (!userId || !USERS_TABLE) return null;
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { userId }
+    })
+  );
+  const item = result.Item as any;
+  return (item?.displayName as string) ?? (item?.name as string) ?? null;
+};
+
 export const handler = async (event: any) => {
   const tournamentId = event.pathParameters?.id;
   const teamId = event.pathParameters?.teamId;
@@ -103,7 +127,14 @@ export const handler = async (event: any) => {
       );
 
       logInfo('assignRole.removed', { tournamentId, teamId, role, removed: current, by: user });
-      return jsonResponse(200, { tournamentId, teamId, role, removed: current });
+      const removedName = await lookupDisplayName(current);
+      return jsonResponse(200, {
+        tournamentId,
+        teamId,
+        role,
+        removed: current,
+        removedDisplayName: removedName ?? maskIdentifier(current)
+      });
     }
 
     if (current && current !== 'Open') {
@@ -137,8 +168,10 @@ export const handler = async (event: any) => {
       })
     );
 
+    const playerDisplayName = (await lookupDisplayName(user)) ?? maskIdentifier(user);
+
     logInfo('assignRole.assigned', { tournamentId, teamId, role, user });
-    return jsonResponse(200, { tournamentId, teamId, role, playerId: user });
+    return jsonResponse(200, { tournamentId, teamId, role, playerId: user, playerDisplayName });
   } catch (err) {
     logError('assignRole.failed', { error: String(err) });
     return jsonResponse(500, { message: 'failed to assign role' });

@@ -1,8 +1,45 @@
-import { QueryCommand, PutCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { QueryCommand, PutCommand, GetCommand, DeleteCommand, BatchGetCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
 import { docClient } from '../shared/db';
 import { jsonResponse } from '../shared/http';
 import { logInfo } from '../shared/logger';
+
+const USERS_TABLE = process.env.USERS_TABLE;
+
+const maskIdentifier = (value: string | undefined): string | null => {
+  if (!value) return null;
+  // Keep identifiers non-identifying if display names are missing.
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  const code = hash.toString(16).padStart(6, '0').slice(0, 6);
+  return `Player-${code}`;
+};
+
+const fetchDisplayNames = async (ids: string[]): Promise<Record<string, string>> => {
+  if (!USERS_TABLE) return {};
+  const unique = Array.from(new Set(ids.filter((v) => v && v !== 'Open')));
+  if (unique.length === 0) return {};
+  const resp = await docClient.send(
+    new BatchGetCommand({
+      RequestItems: {
+        [USERS_TABLE]: {
+          Keys: unique.map((userId) => ({ userId }))
+        }
+      }
+    })
+  );
+  const results: Record<string, string> = {};
+  const items = resp.Responses?.[USERS_TABLE] ?? [];
+  items.forEach((item: any) => {
+    const displayName = item.displayName || item.name;
+    if (item.userId && displayName) {
+      results[item.userId as string] = displayName as string;
+    }
+  });
+  return results;
+};
 
 export const handler = async (event: any) => {
   const tournamentId = event.pathParameters?.id;
@@ -23,8 +60,37 @@ export const handler = async (event: any) => {
       })
     );
 
+    const items = teams.Items ?? [];
+    const userIds = new Set<string>();
+    items.forEach((t: any) => {
+      Object.values(t.members || {})
+        .filter((v: any) => typeof v === 'string' && v !== 'Open')
+        .forEach((v: any) => userIds.add(v as string));
+      if (t.captainSummoner) userIds.add(t.captainSummoner);
+      if (t.createdBy) userIds.add(t.createdBy);
+    });
+    const nameMap = await fetchDisplayNames(Array.from(userIds));
+
+    const enriched = items.map((t: any) => {
+      const memberDisplayNames: Record<string, string> = {};
+      Object.entries(t.members || {}).forEach(([role, member]) => {
+        if (typeof member === 'string' && member !== 'Open') {
+          const label = nameMap[member] ?? maskIdentifier(member);
+          if (label) {
+            memberDisplayNames[role] = label;
+          }
+        }
+      });
+      return {
+        ...t,
+        captainDisplayName: nameMap[t.captainSummoner] ?? maskIdentifier(t.captainSummoner),
+        createdByDisplayName: nameMap[t.createdBy] ?? maskIdentifier(t.createdBy),
+        memberDisplayNames
+      };
+    });
+
     logInfo('teamsApi.list', { tournamentId, count: teams.Count ?? 0 });
-    return jsonResponse(200, { items: teams.Items ?? [] });
+    return jsonResponse(200, { items: enriched });
   }
 
   if (method === 'POST' && !teamIdParam) {
@@ -66,6 +132,9 @@ export const handler = async (event: any) => {
     const teamId = randomUUID();
     const teamKey = `${tournamentId}#${teamId}`;
 
+    const displayNameMap = await fetchDisplayNames([user]);
+    const resolvedName = displayNameMap[user];
+
     const item = {
       teamId,
       tournamentId,
@@ -102,7 +171,14 @@ export const handler = async (event: any) => {
     );
 
     logInfo('teamsApi.created', { tournamentId, teamId, captain: user });
-    return jsonResponse(201, item);
+    return jsonResponse(201, {
+      ...item,
+      captainDisplayName: resolvedName ?? maskIdentifier(user),
+      createdByDisplayName: resolvedName ?? maskIdentifier(user),
+      memberDisplayNames: {
+        [role]: resolvedName ?? maskIdentifier(user)
+      }
+    });
   }
 
   if (method === 'DELETE' && teamIdParam) {

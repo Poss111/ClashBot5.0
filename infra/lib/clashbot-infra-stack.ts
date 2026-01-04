@@ -97,6 +97,14 @@ export class ClashbotInfraStack extends Stack {
       timeToLiveAttribute: 'ttl'
     });
 
+    const userTeamsTable = new dynamodb.Table(this, 'UserTeamsTable', {
+      tableName: `${prefix}ClashUserTeams`,
+      partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'teamKey', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: RemovalPolicy.DESTROY
+    });
+
     const riotSecret = new secrets.Secret(this, 'RiotApiKey', {
       secretName: `${prefix}RIOT-API-KEY`
     });
@@ -113,6 +121,7 @@ export class ClashbotInfraStack extends Stack {
       TOURNAMENTS_TABLE: tournamentsTable.tableName,
       TEAMS_TABLE: teamsTable.tableName,
       REGISTRATIONS_TABLE: registrationsTable.tableName,
+      USER_TEAMS_TABLE: userTeamsTable.tableName,
       USERS_TABLE: usersTable.tableName,
       EVENTS_TABLE: eventsTable.tableName,
       RIOT_SECRET_NAME: riotSecret.secretName,
@@ -155,6 +164,7 @@ export class ClashbotInfraStack extends Stack {
       tournamentsTable.grantReadWriteData(fn);
       teamsTable.grantReadWriteData(fn);
       registrationsTable.grantReadWriteData(fn);
+      userTeamsTable.grantReadWriteData(fn);
       usersTable.grantReadWriteData(fn);
       eventsTable.grantReadWriteData(fn);
       riotSecret.grantRead(fn);
@@ -352,9 +362,11 @@ export class ClashbotInfraStack extends Stack {
     teamsResource.addMethod('GET', new apigw.LambdaIntegration(teamsApiFn), { authorizer });
     teamsResource.addMethod('POST', new apigw.LambdaIntegration(teamsApiFn), { authorizer });
     const teamIdResource = teamsResource.addResource('{teamId}');
+    teamIdResource.addMethod('DELETE', new apigw.LambdaIntegration(teamsApiFn), { authorizer });
     const rolesResource = teamIdResource.addResource('roles');
     const roleResource = rolesResource.addResource('{role}');
     roleResource.addMethod('POST', new apigw.LambdaIntegration(assignRoleFn), { authorizer });
+    roleResource.addMethod('DELETE', new apigw.LambdaIntegration(assignRoleFn), { authorizer });
 
     const authResource = api.root.addResource('auth');
     authResource.addResource('token').addMethod('POST', new apigw.LambdaIntegration(authBrokerFn), {

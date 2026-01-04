@@ -42,8 +42,7 @@ export const handler = async (event: APIGatewayProxyEvent) => {
     logInfo('registerTournament.start', { traceId, event });
 
     const missing: string[] = [];
-    const tournamentId = payload.tournamentId ?? payload.tournament?.tournamentId;
-    if (!tournamentId) missing.push('tournamentId');
+    const tournamentId = payload.tournamentId ?? payload.tournament?.tournamentId ?? randomUUID();
     if (payload.themeId === undefined && payload.tournament?.themeId === undefined) missing.push('themeId');
     if (!payload.nameKey && !payload.tournament?.nameKey) missing.push('nameKey');
     if (!payload.nameKeySecondary && !payload.tournament?.nameKeySecondary) missing.push('nameKeySecondary');

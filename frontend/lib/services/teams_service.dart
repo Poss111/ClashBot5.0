@@ -7,24 +7,33 @@ import 'event_recorder.dart';
 class Team {
   final String teamId;
   final String tournamentId;
+  final String? displayName;
   final String? captainSummoner;
-  final Map<String, dynamic>? members;
+  Map<String, dynamic>? members;
   final String? status;
+  final String? createdBy;
+  final String? createdAt;
 
   Team({
     required this.teamId,
     required this.tournamentId,
+    this.displayName,
     this.captainSummoner,
     this.members,
     this.status,
+    this.createdBy,
+    this.createdAt,
   });
 
   factory Team.fromJson(Map<String, dynamic> json) => Team(
         teamId: json['teamId'] as String,
         tournamentId: json['tournamentId'] as String,
+        displayName: json['displayName'] as String?,
         captainSummoner: json['captainSummoner'] as String?,
-        members: json['members'] as Map<String, dynamic>?,
+        members: (json['members'] as Map<String, dynamic>?) ?? {},
         status: json['status'] as String?,
+        createdBy: json['createdBy'] as String?,
+        createdAt: json['createdAt'] as String?,
       );
 }
 
@@ -34,6 +43,7 @@ class TeamsService {
   Map<String, String> _headers() {
     final token = AuthService.instance.backendToken;
     return {
+      'Content-Type': 'application/json',
       if (token != null) 'Authorization': 'Bearer $token',
     };
   }
@@ -73,6 +83,75 @@ class TeamsService {
     }
   }
 
+  Future<Team> createTeam(String tournamentId, {required String displayName, required String role}) async {
+    final route = 'POST /tournaments/$tournamentId/teams';
+    final url = '$baseUrl/tournaments/$tournamentId/teams';
+    final payload = {'displayName': displayName, 'role': role};
+    try {
+      final resp = await http.post(
+        Uri.parse(url),
+        headers: _headers(),
+        body: json.encode(payload),
+      );
+      if (resp.statusCode != 200 && resp.statusCode != 201) {
+        EventRecorder.record(
+          type: 'api.error',
+          message: 'Failed to create team',
+          statusCode: resp.statusCode,
+          endpoint: route,
+          url: url,
+          requestBody: payload,
+          responseBody: resp.body,
+        );
+        throw Exception('Failed to create team: ${resp.statusCode} ${resp.body}');
+      }
+      final data = json.decode(resp.body) as Map<String, dynamic>;
+      EventRecorder.record(
+        type: 'api.call',
+        message: 'Created team',
+        statusCode: resp.statusCode,
+        endpoint: route,
+        url: url,
+        requestBody: payload,
+        responseBody: resp.body,
+      );
+      return Team.fromJson(data);
+    } catch (e) {
+      EventRecorder.record(type: 'api.error', message: e.toString(), endpoint: route, url: url, statusCode: -1);
+      rethrow;
+    }
+  }
+
+  Future<void> deleteTeam(String tournamentId, String teamId) async {
+    final route = 'DELETE /tournaments/$tournamentId/teams/$teamId';
+    final url = '$baseUrl/tournaments/$tournamentId/teams/$teamId';
+    try {
+      final resp = await http.delete(Uri.parse(url), headers: _headers());
+      if (resp.statusCode != 200 && resp.statusCode != 204) {
+        EventRecorder.record(
+          type: 'api.error',
+          message: 'Failed to delete team',
+          statusCode: resp.statusCode,
+          endpoint: route,
+          url: url,
+          responseBody: resp.body,
+        );
+        throw Exception('Failed to delete team: ${resp.statusCode} ${resp.body}');
+      }
+      EventRecorder.record(
+        type: 'api.call',
+        message: 'Deleted team',
+        statusCode: resp.statusCode,
+        endpoint: route,
+        url: url,
+        responseBody: resp.body,
+      );
+    } catch (e) {
+      EventRecorder.record(type: 'api.error', message: e.toString(), endpoint: route, url: url, statusCode: -1);
+      rethrow;
+    }
+  }
+
   Future<void> assignRole(String tournamentId, String teamId, String role, String playerId) async {
     final route = 'POST /tournaments/$tournamentId/teams/$teamId/roles/$role';
     final url = '$baseUrl/tournaments/$tournamentId/teams/$teamId/roles/$role';
@@ -101,6 +180,36 @@ class TeamsService {
         endpoint: route,
         url: url,
         requestBody: {'playerId': playerId},
+        responseBody: resp.body,
+      );
+    } catch (e) {
+      EventRecorder.record(type: 'api.error', message: e.toString(), endpoint: route, url: url, statusCode: -1);
+      rethrow;
+    }
+  }
+
+  Future<void> removeMember(String tournamentId, String teamId, String role) async {
+    final route = 'DELETE /tournaments/$tournamentId/teams/$teamId/roles/$role';
+    final url = '$baseUrl/tournaments/$tournamentId/teams/$teamId/roles/$role';
+    try {
+      final resp = await http.delete(Uri.parse(url), headers: _headers());
+      if (resp.statusCode != 200 && resp.statusCode != 204) {
+        EventRecorder.record(
+          type: 'api.error',
+          message: 'Failed to remove role',
+          statusCode: resp.statusCode,
+          endpoint: route,
+          url: url,
+          responseBody: resp.body,
+        );
+        throw Exception('Failed to remove member: ${resp.statusCode} ${resp.body}');
+      }
+      EventRecorder.record(
+        type: 'api.call',
+        message: 'Removed member from role',
+        statusCode: resp.statusCode,
+        endpoint: route,
+        url: url,
         responseBody: resp.body,
       );
     } catch (e) {

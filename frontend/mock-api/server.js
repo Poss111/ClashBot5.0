@@ -2,6 +2,7 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+import crypto from 'crypto';
 
 const app = express();
 app.use(cors());
@@ -199,19 +200,91 @@ router.get('/tournaments/:id/teams', withAuth, (req, res) => {
   res.json({ items: list });
 });
 
+router.post('/tournaments/:id/teams', withAuth, (req, res) => {
+  if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+  const body = req.body || {};
+  const displayName = (body.displayName || body.teamName || '').trim();
+  const role = (body.role || '').trim();
+  if (!displayName) return res.status(400).json({ message: 'displayName is required' });
+  if (!role) return res.status(400).json({ message: 'role is required' });
+
+  const list = teams.get(req.params.id) || [];
+  const alreadyMember = list.some((t) => Object.values(t.members || {}).some((v) => v === req.user.email));
+  if (alreadyMember) {
+    return res.status(400).json({ message: 'user already belongs to a team for this tournament; disband first' });
+  }
+  const members = (body.members && typeof body.members === 'object') ? body.members : {};
+  members[role] = req.user.email;
+  const teamId = crypto.randomUUID();
+  const item = {
+    teamId,
+    tournamentId: req.params.id,
+    displayName,
+    captainSummoner: req.user.email,
+    createdBy: req.user.email,
+    createdAt: new Date().toISOString(),
+    members,
+    status: 'open'
+  };
+
+  list.push(item);
+  teams.set(req.params.id, list);
+
+  return res.status(201).json(item);
+});
+
+router.delete('/tournaments/:id/teams/:teamId', withAuth, (req, res) => {
+  if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+  const list = teams.get(req.params.id) || [];
+  const idx = list.findIndex((t) => t.teamId === req.params.teamId);
+  if (idx < 0) return res.status(404).json({ message: 'Team not found' });
+  const team = list[idx];
+  const isCaptain = team.captainSummoner === req.user.email || team.createdBy === req.user.email;
+  if (!isCaptain) return res.status(403).json({ message: 'Only captain can delete' });
+  list.splice(idx, 1);
+  teams.set(req.params.id, list);
+  return res.json({ deleted: true, teamId: req.params.teamId });
+});
+
 router.post('/tournaments/:id/teams/:teamId/roles/:role', withAuth, (req, res) => {
   const list = teams.get(req.params.id) || [];
   const team = list.find((t) => t.teamId === req.params.teamId);
   if (!team) return res.status(404).json({ message: 'Team not found' });
   const roleKey = req.params.role;
   const current = team.members?.[roleKey];
-  if (current && current !== 'Open') {
+  const playerId = req.body?.playerId || 'mock-player';
+
+  // Allow swap: if user already on team in another role, clear that role first.
+  const existingRole = Object.entries(team.members || {}).find(([, v]) => v === playerId)?.[0];
+  // Rule: user cannot be on multiple teams in same tournament.
+  const inAnotherTeam = list.some((t) => t.teamId !== team.teamId && Object.values(t.members || {}).some((v) => v === playerId));
+  if (inAnotherTeam) {
+    return res.status(400).json({ message: 'user already belongs to another team in this tournament' });
+  }
+  if (current && current !== 'Open' && current !== playerId) {
     return res.status(400).json({ message: 'role is already filled' });
   }
-  const playerId = req.body?.playerId || 'mock-player';
   team.members = team.members || {};
+  if (existingRole && existingRole !== roleKey) {
+    team.members[existingRole] = 'Open';
+  }
   team.members[roleKey] = playerId;
   return res.json({ teamId: team.teamId, role: roleKey, playerId });
+});
+
+router.delete('/tournaments/:id/teams/:teamId/roles/:role', withAuth, (req, res) => {
+  if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+  const list = teams.get(req.params.id) || [];
+  const team = list.find((t) => t.teamId === req.params.teamId);
+  if (!team) return res.status(404).json({ message: 'Team not found' });
+  const roleKey = req.params.role;
+  const current = team.members?.[roleKey];
+  if (!current || current === 'Open') return res.status(404).json({ message: 'role is already open' });
+  const isCaptain = team.captainSummoner === req.user.email || team.createdBy === req.user.email;
+  if (!isCaptain) return res.status(403).json({ message: 'Only captain can remove' });
+  if (current === req.user.email) return res.status(400).json({ message: 'captain cannot kick themselves' });
+  team.members[roleKey] = 'Open';
+  return res.json({ teamId: team.teamId, role: roleKey, removed: current });
 });
 
 router.post('/tournaments/:id/assign', withAuth, (req, res) => {

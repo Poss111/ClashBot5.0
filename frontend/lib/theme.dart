@@ -30,8 +30,10 @@ class AppTheme {
 class AppDateFormats {
   static const String standardPattern = 'EEE, MMM d yyyy · h:mm a';
   static const String longPattern = 'EEEE, MMM d yyyy · h:mm a';
+  static const String justTimePattern = 'h:mm a';
 
   static String formatStandard(DateTime dt) => DateFormat(standardPattern).format(dt);
   static String formatLong(DateTime dt) => DateFormat(longPattern).format(dt);
+  static String formatJustTime(DateTime dt) => DateFormat(justTimePattern).format(dt);
 }
 

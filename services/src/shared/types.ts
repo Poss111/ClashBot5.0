@@ -10,8 +10,11 @@ export interface Tournament {
 export interface Team {
   teamId: string;
   tournamentId: string;
+  displayName?: string;
   captainSummoner?: string;
-  members?: string[];
+  createdBy?: string;
+  createdAt?: string;
+  members?: Record<string, string>;
   status?: 'open' | 'locked';
 }
 

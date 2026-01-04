@@ -1,4 +1,4 @@
-import { UpdateCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { UpdateCommand, GetCommand, QueryCommand, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../shared/db';
 import { jsonResponse } from '../shared/http';
 import { logError, logInfo } from '../shared/logger';
@@ -8,6 +8,7 @@ export const handler = async (event: any) => {
   const teamId = event.pathParameters?.teamId;
   const role = event.pathParameters?.role;
   const user = event.requestContext?.authorizer?.principalId;
+  const method = event.httpMethod;
 
   if (!tournamentId || !teamId || !role) {
     return jsonResponse(400, { message: 'tournamentId, teamId, and role are required' });
@@ -29,8 +30,82 @@ export const handler = async (event: any) => {
       return jsonResponse(404, { message: 'team not found' });
     }
 
+    const isCaptain = item.captainSummoner === user || item.createdBy === user;
     const members = item.members || {};
     const current = members[role];
+
+    // Rule: user cannot be on multiple teams in the same tournament (check membership table).
+    const membershipCheck = await docClient.send(
+      new QueryCommand({
+        TableName: process.env.USER_TEAMS_TABLE,
+        KeyConditionExpression: 'userId = :uid AND begins_with(teamKey, :tk)',
+        ExpressionAttributeValues: {
+          ':uid': user,
+          ':tk': `${tournamentId}#`
+        }
+      })
+    );
+    const inAnotherTeam =
+      membershipCheck.Items?.some((m: any) => m.teamId !== teamId) ?? false;
+    if (inAnotherTeam) {
+      return jsonResponse(400, { message: 'user already belongs to another team in this tournament' });
+    }
+
+    // Allow swapping roles within the same team: clear the user's old role if targeting a new slot.
+    const existingRoleForUser = Object.entries(members).find(([, v]) => v === user)?.[0];
+    if (existingRoleForUser && existingRoleForUser !== role) {
+      if (current && current !== 'Open' && current !== user) {
+        return jsonResponse(400, { message: 'role is already filled' });
+      }
+      members[existingRoleForUser] = 'Open';
+      await docClient.send(
+        new DeleteCommand({
+          TableName: process.env.USER_TEAMS_TABLE,
+          Key: {
+            userId: user,
+            teamKey: `${tournamentId}#${teamId}`
+          }
+        })
+      );
+    }
+
+    if (method === 'DELETE') {
+      if (!isCaptain) {
+        return jsonResponse(403, { message: 'only the captain can remove members' });
+      }
+      if (!current || current === 'Open') {
+        return jsonResponse(404, { message: 'role is already open' });
+      }
+      if (current === user) {
+        return jsonResponse(400, { message: 'captain cannot kick themselves' });
+      }
+
+      members[role] = 'Open';
+
+      await docClient.send(
+        new DeleteCommand({
+          TableName: process.env.USER_TEAMS_TABLE,
+          Key: {
+            userId: current,
+            teamKey: `${tournamentId}#${teamId}`
+          }
+        })
+      );
+
+      await docClient.send(
+        new UpdateCommand({
+          TableName: process.env.TEAMS_TABLE,
+          Key: key,
+          UpdateExpression: 'SET #members = :members',
+          ExpressionAttributeNames: { '#members': 'members' },
+          ExpressionAttributeValues: { ':members': members }
+        })
+      );
+
+      logInfo('assignRole.removed', { tournamentId, teamId, role, removed: current, by: user });
+      return jsonResponse(200, { tournamentId, teamId, role, removed: current });
+    }
+
     if (current && current !== 'Open') {
       return jsonResponse(400, { message: 'role is already filled' });
     }
@@ -44,6 +119,21 @@ export const handler = async (event: any) => {
         UpdateExpression: 'SET #members = :members',
         ExpressionAttributeNames: { '#members': 'members' },
         ExpressionAttributeValues: { ':members': members }
+      })
+    );
+
+    await docClient.send(
+      new PutCommand({
+        TableName: process.env.USER_TEAMS_TABLE,
+        Item: {
+          userId: user,
+          teamKey: `${tournamentId}#${teamId}`,
+          teamId,
+          tournamentId,
+          role,
+          isCaptain: item.captainSummoner === user,
+          updatedAt: new Date().toISOString()
+        }
       })
     );
 

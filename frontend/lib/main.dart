@@ -16,6 +16,9 @@ import 'services/auth_service.dart';
 import 'services/websocket_config.dart';
 import 'services/event_recorder.dart';
 import 'services/tournaments_service.dart';
+import 'theme.dart';
+import 'models/notification_item.dart';
+import 'models/notification_presentation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
 
@@ -52,7 +55,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
   bool _authLoading = false;
   bool _authFailed = false;
   WebSocketChannel? _wsChannel;
-  final List<Map<String, dynamic>> _events = [];
+  final List<AppNotification> _events = [];
   int _unreadEvents = 0;
 
   @override
@@ -83,7 +86,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
             onShowEvents: () => _showEvents(context),
             child: HomeScreen(
               effectiveRole: _effectiveRole ?? _userRole,
-              navEnabled: !_authFailed && !_authLoading,
+            navEnabled: true,
             ),
           ),
         ),
@@ -107,9 +110,8 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
             unreadEvents: _unreadEvents,
             appVersion: _appVersion,
             onShowEvents: () => _showEvents(context),
-            child: _authFailed
-                ? const _UnauthorizedScreen(message: 'Sign-in required')
-                : TournamentsListScreen(userEmail: _userEmail),
+          allowUnauthed: true,
+          child: TournamentsListScreen(userEmail: _userEmail),
           ),
         ),
         GoRoute(
@@ -372,19 +374,14 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
         } catch (e) {
           EventRecorder.record(type: 'ws.error', message: e.toString(), endpoint: 'GET /events', url: uri.toString(), statusCode: -1);
         }
-        setState(() {
-          _events.insert(0, parsed);
-          if (_events.length > 100) {
-            _events.removeRange(100, _events.length);
-          }
-          _unreadEvents += 1;
-        });
-        final type = parsed['type']?.toString().toLowerCase() ?? '';
+        final item = AppNotification.fromMap(parsed);
+        _pushEvent(parsed);
+        final type = item.type.toLowerCase();
         if (type.contains('tournament')) {
           // Refresh tournament cache when a new tournament event arrives.
           TournamentsService().refreshCache();
         }
-        _maybeNotifyTournament(parsed);
+        _maybeNotifyTournament(item);
       }, onError: (_) {
         _disposeWebSocket();
       }, onDone: () {
@@ -424,16 +421,38 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
     }
   }
 
-  Future<void> _maybeNotifyTournament(Map<String, dynamic> ev) async {
+  Future<void> _maybeNotifyTournament(AppNotification ev) async {
     if (kIsWeb) return;
-    final type = ev['type']?.toString().toLowerCase() ?? '';
-    if (!type.contains('tournament')) return;
-    final name = ev['name'] ?? ev['tournamentId'] ?? 'New tournament';
-    final status = ev['status'] ?? ev['newStatus'] ?? ev['phase'];
-    final body = status != null ? '$name · status: $status' : name.toString();
+    final type = ev.type?.toString().toLowerCase() ?? '';
+    if (type != 'tournament.registered') return;
+    final parsedName = ev.data?['nameKeySecondary'];
+    final startTime = ev.data?['startTime'];
+    final registrationTime = ev.data?['registrationTime'];
+    var formattedStartTime = '';
+    if (startTime != null || startTime.isNotEmpty) {
+      try {
+        formattedStartTime = AppDateFormats.formatLong(DateTime.parse(startTime).toLocal());
+      } catch (e) {
+        logDebug("Error parsing startTime: $e");
+      }
+    }
+    var formattedRegistrationTime = '';
+    if (registrationTime != null || registrationTime.isNotEmpty) {
+      try {
+        formattedRegistrationTime = AppDateFormats.formatLong(DateTime.parse(registrationTime).toLocal());
+      } catch (e) {
+        logDebug("Error parsing registrationTime: $e");
+      }
+    }
+    final body = """
+    $parsedName has been registered and will start on $formattedStartTime.
+    Registration is open starting on $formattedRegistrationTime.
+
+    Let's go Clashers!
+    """;
     await _notifications.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      'Tournament update',
+      'New Tournament Available!',
       body,
       NotificationDetails(
         android: AndroidNotificationDetails(
@@ -473,8 +492,9 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
     if (!kDebugMode && type.startsWith('api.')) {
       return;
     }
+    final item = AppNotification.fromMap(event);
     setState(() {
-      _events.insert(0, event);
+      _events.insert(0, item);
       if (_events.length > 100) {
         _events.removeRange(100, _events.length);
       }
@@ -495,79 +515,32 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
             child: Text('No events yet.'),
           );
         }
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: _events.length,
-          itemBuilder: (_, i) {
-            final ev = _events[i];
-            final title = (ev['type'] ?? 'event').toString();
-            final causedBy = ev['causedBy']?.toString();
-            final tournamentId = ev['tournamentId']?.toString();
-            final message = ev['message']?.toString();
-            final ts = ev['timestamp']?.toString();
-            final data = ev['data'];
-            final url = ev['url']?.toString();
-            final endpoint = ev['endpoint']?.toString();
-            final status = ev['statusCode']?.toString();
-            return Card(
-              margin: const EdgeInsets.symmetric(vertical: 6),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          tooltip: 'Dismiss',
-                          onPressed: () {
-                            Navigator.of(ctx).pop();
-                            setState(() {
-                              _events.removeAt(i);
-                            });
-                            // Reopen to reflect removal
-                            WidgetsBinding.instance.addPostFrameCallback((_) => _showEvents(context));
-                          },
-                        )
-                      ],
-                    ),
-                    ...[
-                      if (url != null) Text('URL: $url', style: Theme.of(context).textTheme.bodySmall),
-                      if (message != null) Text(message, style: Theme.of(context).textTheme.bodySmall),
-                      if (endpoint != null) Text('Endpoint: $endpoint', style: Theme.of(context).textTheme.bodySmall),
-                      if (status != null) Text('Status: $status', style: Theme.of(context).textTheme.bodySmall),
-                      if (tournamentId != null) Text('Tournament: $tournamentId'),
-                      if (causedBy != null) Text('Caused by: $causedBy'),
-                      if (ts != null) Text('Time: $ts'),
-                    ],
-                    if (data != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          const JsonEncoder.withIndent('  ').convert(data),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
-                        ),
-                      ),
-                    if (data == null && ev['raw'] != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          ev['raw'].toString(),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
-                        ),
-                      )
-                  ],
-                ),
-              ),
-            );
-          },
+        return Card(
+          margin: const EdgeInsets.all(12),
+          child: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: _events.length,
+            itemBuilder: (_, i) {
+              final ev = _events[i];
+              final presentation = NotificationPresenter.build(ev);
+              final ts = ev.timestampLabel;
+              final data = ev.data;
+              return _NotificationCard(
+                presentation: presentation,
+                timestampLabel: ts,
+                data: data,
+                raw: ev.raw,
+                onDismiss: () {
+                  Navigator.of(ctx).pop();
+                  setState(() {
+                    _events.removeAt(i);
+                  });
+                  // Reopen to reflect removal
+                  WidgetsBinding.instance.addPostFrameCallback((_) => _showEvents(context));
+                },
+              );
+            },
+          ),
         );
       },
     );
@@ -577,24 +550,8 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
   Widget build(BuildContext context) {
     return MaterialApp.router(
       title: 'Clash Companion',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.indigo,
-          brightness: Brightness.light,
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF9FAFB),
-        cardColor: Colors.white,
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.indigo,
-          brightness: Brightness.dark,
-        ),
-        scaffoldBackgroundColor: const Color(0xFF0B1220),
-        cardColor: const Color(0xFF111827),
-      ),
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
       themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
@@ -623,7 +580,8 @@ class _AppScaffold extends StatelessWidget {
   final bool authLoading;
   final bool authFailed;
   final bool isHome;
-  final List<Map<String, dynamic>> events;
+  final bool allowUnauthed;
+  final List<AppNotification> events;
   final int unreadEvents;
   final VoidCallback? onShowEvents;
   final String? appVersion;
@@ -643,6 +601,7 @@ class _AppScaffold extends StatelessWidget {
     required this.authLoading,
     required this.authFailed,
     required this.isHome,
+    this.allowUnauthed = false,
     required this.events,
     required this.unreadEvents,
     this.onShowEvents,
@@ -654,7 +613,8 @@ class _AppScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final isMobile = _isMobile(context);
     final showInlineRoleSwitcher = !authFailed && userRole == 'ADMIN' && !isMobile;
-    final navEnabled = !authFailed;
+    final tournamentsEnabled = true;
+    final teamsEnabled = !authFailed;
     return Scaffold(
       drawer: isMobile
           ? Drawer(
@@ -676,16 +636,16 @@ class _AppScaffold extends StatelessWidget {
                     context,
                     label: 'Tournaments',
                     route: '/tournaments',
-                    enabled: navEnabled,
+                    enabled: tournamentsEnabled,
                   ),
                   _buildNavTile(
                     context,
                     label: 'Teams',
                     route: '/teams',
-                    enabled: navEnabled,
+                    enabled: teamsEnabled,
                   ),
                   if ((effectiveRole ?? userRole) == 'ADMIN')
-                    _buildNavTile(context, label: 'Admin', route: '/admin', enabled: navEnabled),
+                    _buildNavTile(context, label: 'Admin', route: '/admin', enabled: teamsEnabled),
                 ],
               ),
             )
@@ -709,12 +669,12 @@ class _AppScaffold extends StatelessWidget {
             ),
           if (!isMobile)
             TextButton(
-              onPressed: authFailed ? null : () => context.go('/tournaments'),
+              onPressed: () => context.go('/tournaments'),
               child: const Text('Tournaments'),
             ),
           if (!isMobile)
             TextButton(
-              onPressed: authFailed ? null : () => context.go('/teams'),
+              onPressed: teamsEnabled ? () => context.go('/teams') : null,
               child: const Text('Teams'),
             ),
           _buildEventsIcon(context),
@@ -733,7 +693,7 @@ class _AppScaffold extends StatelessWidget {
           Column(
             children: [
               Expanded(
-                child: authFailed && !isHome
+                child: authFailed && !isHome && !allowUnauthed
                     ? const _UnauthorizedScreen(message: 'Sign-in required')
                     : child,
               ),
@@ -1013,6 +973,120 @@ class _UnauthorizedScreen extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Text(message ?? 'Unauthorized'),
+      ),
+    );
+  }
+}
+
+class _NotificationCard extends StatelessWidget {
+  final NotificationDisplay presentation;
+  final String timestampLabel;
+  final Map<String, dynamic>? data;
+  final Map<String, dynamic>? raw;
+  final VoidCallback onDismiss;
+
+  const _NotificationCard({
+    required this.presentation,
+    required this.timestampLabel,
+    required this.onDismiss,
+    this.data,
+    this.raw,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final title = presentation.title;
+    final subtitle = presentation.subtitle;
+    final causedBy = presentation.causedBy;
+    final timestamp = presentation.timestamp;
+    final isError = presentation.severity == NotificationSeverity.error;
+    final isWarning = presentation.severity == NotificationSeverity.warning;
+    final isSuccess = presentation.severity == NotificationSeverity.success;
+    final isInfo = presentation.severity == NotificationSeverity.info;
+    final bgColor = isError
+        ? Colors.red
+        : isWarning
+            ? Colors.orange
+            : isSuccess
+                ? Colors.green
+                : isInfo
+                    ? Colors.blue
+                    : null;
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                if (bgColor != null)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: bgColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                  ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Dismiss',
+                  onPressed: onDismiss,
+                )
+              ],
+            ),
+            if (causedBy != null || timestamp != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    if (causedBy != null)
+                      Text(
+                        'From $causedBy',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontSize: 11,
+                              color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.65),
+                            ),
+                      ),
+                    if (timestamp != null)
+                      Text(
+                        timestamp,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontSize: 11,
+                              color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.65),
+                            ),
+                      ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 6),
+            if (subtitle != null && subtitle.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(left: 6, bottom: 2),
+                child: Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+              ),
+            ...presentation.details.map(
+              (line) => Padding(
+                padding: const EdgeInsets.only(left: 6, bottom: 2),
+                child: Text(line, style: Theme.of(context).textTheme.bodySmall),
+              ),
+            )
+          ],
+        ),
       ),
     );
   }

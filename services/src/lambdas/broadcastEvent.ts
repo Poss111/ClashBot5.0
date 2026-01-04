@@ -34,6 +34,8 @@ export const handler = async (event: BroadcastEvent) => {
     );
     const connections = result.Items || [];
 
+    logInfo('broadcastEvent.event', { event });
+
     // Broadcast event to all connections
     const broadcastPromises = connections.map(async (item) => {
       try {
@@ -44,7 +46,8 @@ export const handler = async (event: BroadcastEvent) => {
               type: event.type,
               data: event.data,
               tournamentId: event.tournamentId,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              causedBy: event.causedBy
             })
           })
         );

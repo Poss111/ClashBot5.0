@@ -287,7 +287,7 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
     for (final t in tournaments) {
       DateTime? dt;
       try {
-        dt = DateTime.parse(t.startTime);
+        dt = DateTime.parse(t.startTime).toLocal();
       } catch (_) {
         continue;
       }
@@ -354,13 +354,13 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
     DateTime? registrationTime;
     final status = (tournament.status ?? 'N/A').toUpperCase();
     try {
-      startTime = DateTime.parse(tournament.startTime);
+      startTime = DateTime.parse(tournament.startTime).toLocal();
     } catch (e) {
       // Invalid date format
     }
     if (tournament.registrationTime != null) {
       try {
-        registrationTime = DateTime.parse(tournament.registrationTime!);
+        registrationTime = DateTime.parse(tournament.registrationTime!).toLocal();
       } catch (_) {}
     }
     // Ensure registration precedes start for display; if inverted, swap.
@@ -393,6 +393,7 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
                         : (tournament.name?.isNotEmpty == true ? tournament.name! : tournament.tournamentId),
                     style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
+                      color: theme.brightness == Brightness.dark ? Colors.white : null,
                     ),
                   ),
                 ),
@@ -420,12 +421,7 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
                   value: startTime != null
                       ? DateFormat('EEE, MMM d · h:mm a').format(startTime)
                       : tournament.startTime,
-                ),
-                _buildInfoChip(
-                  icon: Icons.numbers,
-                  label: 'ID',
-                  value: tournament.tournamentId,
-                ),
+                )
               ],
             ),
           ],
@@ -449,8 +445,8 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey.shade800)),
-          Text(value, style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+          Text(label, style: theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600)),
+          Text(value, style: theme.textTheme.bodySmall),
         ],
       ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

@@ -98,7 +98,8 @@ export const handler = async (event: APIGatewayProxyEvent) => {
                 tournamentId: tournament.tournamentId,
                 nameKey: tournament.nameKey,
                 nameKeySecondary: tournament.nameKeySecondary,
-                startTime: tournament.startTime
+                startTime: tournament.startTime,
+                registrationTime: tournament.registrationTime
               }
             })
           })
@@ -110,7 +111,10 @@ export const handler = async (event: APIGatewayProxyEvent) => {
 
     logInfo('registerTournament.upserted', {
       tournamentId: tournament.tournamentId,
+      nameKey: tournament.nameKey,
+      nameKeySecondary: tournament.nameKeySecondary,
       startTime: tournament.startTime,
+      registrationTime: tournament.registrationTime,
       traceId
     });
     return jsonResponse(201, { tournamentId: tournament.tournamentId, startTime: tournament.startTime, traceId });

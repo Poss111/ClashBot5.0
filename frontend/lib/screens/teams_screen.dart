@@ -16,6 +16,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
   final tournamentsService = TournamentsService();
   final teamsService = TeamsService();
   late Future<List<Tournament>> _tournamentsFuture;
+  final Map<String, Future<List<Team>>> _teamFutures = {};
   final List<String> _roleOrder = const ['Top', 'Jungle', 'Mid', 'Bot', 'Support'];
   String? _busyTeamId;
   String? _busyRole;
@@ -26,6 +27,10 @@ class _TeamsScreenState extends State<TeamsScreen> {
   void initState() {
     super.initState();
     _tournamentsFuture = _loadTournaments();
+  }
+
+  Future<List<Team>> _teamsFuture(String tournamentId) {
+    return _teamFutures.putIfAbsent(tournamentId, () => teamsService.list(tournamentId));
   }
 
   Future<List<Tournament>> _loadTournaments() async {
@@ -238,7 +243,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
                     itemBuilder: (context, index) {
                       final t = tournaments[index];
                       return FutureBuilder<List<Team>>(
-                        future: teamsService.list(t.tournamentId),
+                        future: _teamsFuture(t.tournamentId),
                         builder: (context, teamsSnapshot) {
                           if (teamsSnapshot.connectionState == ConnectionState.waiting) {
                             return Card(

@@ -1,16 +1,17 @@
 name: clash_companion
 description: Clash Companion - League of Legends Clash Tournament Management
 publish_to: 'none'
-version: 1.0.0+alpha
+version: 1.0.1+alpha
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.0.0 <4.0.0' 
 
 dependencies:
   flutter:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.4
   flutter_local_notifications: ^17.1.2
   package_info_plus: ^4.2.0
   cupertino_icons: ^1.0.6

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:clash_companion/services/auth_service.dart';
 import 'package:clash_companion/services/logger.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,8 +15,10 @@ class TournamentsService {
   static const _cacheTtlSeconds = 300; // 5 minutes
 
   Map<String, String> _headers() {
+    final token = AuthService.instance.backendToken;
     return {
       'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
     };
   }
 

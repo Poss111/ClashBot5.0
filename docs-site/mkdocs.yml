@@ -2,9 +2,10 @@ site_name: Clash Companion End User Docs
 site_description: Privacy, data practices, and account deletion for the app
 # Replace with your public docs URL once published
 site_url: https://<your-github-username>.github.io/ClashCompanion/
-repo_url: https://github.com/Poss111/ClashBot5.0/docs-site/
-repo_name: Github
+repo_url: https://github.com/Poss111/ClashBot5.0
+repo_name: Poss111/ClashBot5.0
 site_author: Poss111
+edit_uri: edit/main/docs-site/docs/
 
 nav:
   - Home: index.md
@@ -20,12 +21,21 @@ theme:
     - search.suggest
     - search.highlight
     - content.code.copy
-  icon: assets/Artboard 1.png
+    - content.action.edit
+  logo: assets/Artboard 1.png
+  favicon: assets/Artboard 1.png
+  palette:
+    primary: red
 
 plugins:
   - search
   - pdf-export:
       combined: false  # export per-page PDFs
+  - git-revision-date-localized:
+      enable_creation_date: true
+  - git-committers:
+      repository: Poss111/ClashBot5.0
+      branch: main
 
 markdown_extensions:
   - toc:

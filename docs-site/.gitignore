@@ -1,0 +1,30 @@
+# MkDocs build output
+/site/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+env/
+venv/
+
+# OS/filesystem
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Others
+*.bak
+*.swp
+*.swo
+
+site/

@@ -33,9 +33,7 @@ plugins:
       combined: false  # export per-page PDFs
   - git-revision-date-localized:
       enable_creation_date: true
-  - git-committers:
-      repository: Poss111/ClashBot5.0
-      branch: main
+  - git-authors
 
 markdown_extensions:
   - toc:

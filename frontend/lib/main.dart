@@ -448,6 +448,9 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
   }
 
   void _ensureWebSocket() {
+    // Allow integration tests to disable WS entirely.
+    const wsDisabled = bool.fromEnvironment('MOCK_WS_DISABLED', defaultValue: false);
+    if (wsDisabled) return;
     if (_wsChannel != null) return;
     Uri uri = Uri.parse(WebSocketConfig.baseUrl);
     try {

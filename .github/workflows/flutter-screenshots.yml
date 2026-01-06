@@ -231,10 +231,6 @@ jobs:
           script: |
             echo "Current directory: $(pwd)"
             flutter pub get
-            if [ ! -f integration_test/screenshot_test.dart ]; then
-              echo "Add integration_test/screenshot_test.dart that writes images to ./screenshots"
-              exit 1
-            fi
             mkdir -p screenshots/${{ matrix.device.name }}
             flutter test integration_test/screenshot_test.dart \
               --device-id emulator-5554 \

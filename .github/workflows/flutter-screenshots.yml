@@ -232,12 +232,7 @@ jobs:
             echo "Current directory: $(pwd)"
             flutter pub get
             mkdir -p screenshots/${{ matrix.device.name }}
-            flutter test integration_test/screenshot_test.dart \
-              --device-id emulator-5554 \
-              --dart-define=MOCK_AUTH=true \
-              --dart-define=MOCK_API_ORIGIN=http://127.0.0.1:8080 \
-              --dart-define=MOCK_WS_ORIGIN=ws://127.0.0.1:0 \
-              --dart-define=SCREENSHOT_DIR=screenshots/${{ matrix.device.name }}
+            flutter test integration_test/screenshot_test.dart --device-id emulator-5554 --dart-define=MOCK_AUTH=true --dart-define=MOCK_API_ORIGIN=http://127.0.0.1:8080 --dart-define=MOCK_WS_ORIGIN=ws://127.0.0.1:0 --dart-define=SCREENSHOT_DIR=screenshots/${{ matrix.device.name }}
             find build -path "*screenshots*" -name "*.png" -print -exec cp {} screenshots/${{ matrix.device.name }}/ \;
             echo "Screenshots saved to screenshots/${{ matrix.device.name }}/"
 

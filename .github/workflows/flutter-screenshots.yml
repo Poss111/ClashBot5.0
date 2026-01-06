@@ -114,7 +114,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
-          path: build/app/outputs/apk/debug/app-debug.apk
+          path: ${{ github.workspace }}/build/app/outputs/apk/debug/app-debug.apk
 
   screenshots:
     name: Capture screenshots
@@ -186,6 +186,24 @@ jobs:
           storeFile=${ANDROID_RELEASE_KEYSTORE_PATH}
           EOF
 
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v3
+        
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ matrix.device.api-level }}
+
       - name: Prepare screenshots folder
         run: mkdir -p screenshots/${{ matrix.device.name }}
 
@@ -196,7 +214,7 @@ jobs:
           target: ${{ matrix.device.target }}
           arch: ${{ matrix.device.arch }}
           profile: ${{ matrix.device.profile }}
-          emulator-boot-timeout: 300
+          emulator-boot-timeout: 120
           force-avd-creation: true
           disable-animations: true
           ram-size: 3072M
@@ -223,5 +241,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: screenshots-${{ matrix.device.name }}
-          path: screenshots/${{ matrix.device.name }}/
+          path: ${{ github.workspace }}/screenshots/${{ matrix.device.name }}/
 

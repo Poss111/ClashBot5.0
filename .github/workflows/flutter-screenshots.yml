@@ -212,15 +212,11 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.device.api-level }}
-          target: ${{ matrix.device.target }}
-          arch: ${{ matrix.device.arch }}
-          profile: ${{ matrix.device.profile }}
           emulator-boot-timeout: 120
-          force-avd-creation: true
+          force-avd-creation: false
           disable-animations: true
-          ram-size: 3072M
-          emulator-options: "-no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none -camera-front none"
-          script: echo "Hello, world!"
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: ./gradlew connectedDebugAndroidTest
         #   script: |
         #     flutter pub get
         #     if [ ! -f integration_test/screenshot_test.dart ]; then

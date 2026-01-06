@@ -127,12 +127,12 @@ jobs:
       matrix:
         device:
           - name: pixel-6-api-34
-            api-level: 34
+            api-level: 25
             target: google_apis
             arch: x86_64
             profile: pixel_6
           - name: pixel-4-api-33
-            api-level: 33
+            api-level: 25
             target: google_apis
             arch: x86_64
             profile: pixel_4

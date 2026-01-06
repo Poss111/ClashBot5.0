@@ -1,7 +1,7 @@
 name: clash_companion
 description: Clash Companion - League of Legends Clash Tournament Management
 publish_to: 'none'
-version: 1.1.0+alpha
+version: 1.1.1+alpha
 
 environment:
   sdk: '>=3.0.0 <4.0.0' 

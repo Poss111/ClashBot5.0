@@ -179,7 +179,6 @@ jobs:
 
       - name: Prepare screenshots folder
         run: mkdir -p screenshots/${{ matrix.device.name }}
-        working-directory: .
 
       - name: Launch emulator and run screenshot test
         uses: reactivecircus/android-emulator-runner@v2
@@ -188,6 +187,11 @@ jobs:
           target: ${{ matrix.device.target }}
           arch: ${{ matrix.device.arch }}
           profile: ${{ matrix.device.profile }}
+          emulator-timeout: 900
+          force-avd-creation: true
+          disable-animations: true
+          ram-size: 3072M
+          emulator-options: "-no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none -camera-front none"
           script: |
             flutter pub get
             if [ ! -f integration_test/screenshot_test.dart ]; then
@@ -202,6 +206,7 @@ jobs:
               --dart-define=MOCK_WS_ORIGIN=ws://127.0.0.1:0 \
               --dart-define=SCREENSHOT_DIR=screenshots/${{ matrix.device.name }}
             find build -path "*screenshots*" -name "*.png" -print -exec cp {} screenshots/${{ matrix.device.name }}/ \;
+            echo "Screenshots saved to screenshots/${{ matrix.device.name }}/"
 
       - name: Upload screenshots
         if: always()

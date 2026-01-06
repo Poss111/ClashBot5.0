@@ -22,8 +22,8 @@ concurrency:
 env:
   FLUTTER_VERSION: "3.24.4"
   JAVA_VERSION: "17"
-  ANDROID_DEBUG_KEYSTORE_PATH: frontend/android/app/debug-keystore.jks
-  ANDROID_RELEASE_KEYSTORE_PATH: frontend/android/app/release-keystore.jks
+  ANDROID_DEBUG_KEYSTORE_PATH: android/debug-keystore.jks
+  ANDROID_RELEASE_KEYSTORE_PATH: android/release-keystore.jks
 
 jobs:
   build:
@@ -67,19 +67,34 @@ jobs:
           echo "$DEBUG_KEYSTORE_B64" | base64 -d > "$ANDROID_DEBUG_KEYSTORE_PATH"
           echo "$RELEASE_KEYSTORE_B64" | base64 -d > "$ANDROID_RELEASE_KEYSTORE_PATH"
 
-          cat > frontend/android/app/debug-key.properties <<'EOF'
+          cat > android/debug-key.properties <<'EOF'
           storePassword=${DEBUG_KEYSTORE_PASSWORD}
           keyPassword=${DEBUG_KEY_PASSWORD}
           keyAlias=${DEBUG_KEY_ALIAS}
           storeFile=${ANDROID_DEBUG_KEYSTORE_PATH}
           EOF
 
-          cat > frontend/android/app/key.properties <<'EOF'
+          cat > android/key.properties <<'EOF'
           storePassword=${RELEASE_KEYSTORE_PASSWORD}
           keyPassword=${RELEASE_KEY_PASSWORD}
           keyAlias=${RELEASE_KEY_ALIAS}
           storeFile=${ANDROID_RELEASE_KEYSTORE_PATH}
           EOF
+
+      - name: Check if andoird keystore properties file exists
+        run: |
+          if [ ! -f android/debug-key.properties ]; then
+            echo "Android debug key properties file does not exist"
+            exit 1
+          else
+            echo "Android debug key properties file exists"
+          fi
+          if [ ! -f android/key.properties ]; then
+            echo "Android release key properties file does not exist"
+            exit 1
+          else
+            echo "Android release key properties file exists"
+          fi
 
       - name: Pub get
         run: flutter pub get
@@ -91,7 +106,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
-          path: frontend/build/app/outputs/flutter-apk/app-debug.apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
 
   screenshots:
     name: Capture screenshots

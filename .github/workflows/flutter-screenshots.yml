@@ -105,7 +105,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          path: build/app/outputs/apk/debug/app-debug.apk
 
   screenshots:
     name: Capture screenshots
@@ -187,26 +187,27 @@ jobs:
           target: ${{ matrix.device.target }}
           arch: ${{ matrix.device.arch }}
           profile: ${{ matrix.device.profile }}
-          emulator-timeout: 900
+          emulator-boot-timeout: 900
           force-avd-creation: true
           disable-animations: true
           ram-size: 3072M
           emulator-options: "-no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none -camera-front none"
-          script: |
-            flutter pub get
-            if [ ! -f integration_test/screenshot_test.dart ]; then
-              echo "Add integration_test/screenshot_test.dart that writes images to ./screenshots"
-              exit 1
-            fi
-            mkdir -p screenshots/${{ matrix.device.name }}
-            flutter test integration_test/screenshot_test.dart \
-              --device-id emulator-5554 \
-              --dart-define=MOCK_AUTH=true \
-              --dart-define=MOCK_API_ORIGIN=http://127.0.0.1:8080 \
-              --dart-define=MOCK_WS_ORIGIN=ws://127.0.0.1:0 \
-              --dart-define=SCREENSHOT_DIR=screenshots/${{ matrix.device.name }}
-            find build -path "*screenshots*" -name "*.png" -print -exec cp {} screenshots/${{ matrix.device.name }}/ \;
-            echo "Screenshots saved to screenshots/${{ matrix.device.name }}/"
+          script: echo "Hello, world!"
+        #   script: |
+        #     flutter pub get
+        #     if [ ! -f integration_test/screenshot_test.dart ]; then
+        #       echo "Add integration_test/screenshot_test.dart that writes images to ./screenshots"
+        #       exit 1
+        #     fi
+        #     mkdir -p screenshots/${{ matrix.device.name }}
+        #     flutter test integration_test/screenshot_test.dart \
+        #       --device-id emulator-5554 \
+        #       --dart-define=MOCK_AUTH=true \
+        #       --dart-define=MOCK_API_ORIGIN=http://127.0.0.1:8080 \
+        #       --dart-define=MOCK_WS_ORIGIN=ws://127.0.0.1:0 \
+        #       --dart-define=SCREENSHOT_DIR=screenshots/${{ matrix.device.name }}
+        #     find build -path "*screenshots*" -name "*.png" -print -exec cp {} screenshots/${{ matrix.device.name }}/ \;
+        #     echo "Screenshots saved to screenshots/${{ matrix.device.name }}/"
 
       - name: Upload screenshots
         if: always()

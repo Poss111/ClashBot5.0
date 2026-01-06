@@ -114,7 +114,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
-          path: ${{ github.workspace }}/build/app/outputs/apk/debug/app-debug.apk
+          path: ${{ github.workspace }}/frontend/build/app/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
 
   screenshots:
     name: Capture screenshots
@@ -241,5 +242,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: screenshots-${{ matrix.device.name }}
-          path: ${{ github.workspace }}/screenshots/${{ matrix.device.name }}/
+          path: ${{ github.workspace }}/frontend/screenshots/${{ matrix.device.name }}/
+          if-no-files-found: error
 

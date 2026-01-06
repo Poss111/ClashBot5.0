@@ -67,14 +67,14 @@ jobs:
           echo "$DEBUG_KEYSTORE_B64" | base64 -d > "$ANDROID_DEBUG_KEYSTORE_PATH"
           echo "$RELEASE_KEYSTORE_B64" | base64 -d > "$ANDROID_RELEASE_KEYSTORE_PATH"
 
-          cat > frontend/debug-key.properties <<'EOF'
+          cat > frontend/android/app/debug-key.properties <<'EOF'
           storePassword=${DEBUG_KEYSTORE_PASSWORD}
           keyPassword=${DEBUG_KEY_PASSWORD}
           keyAlias=${DEBUG_KEY_ALIAS}
           storeFile=${ANDROID_DEBUG_KEYSTORE_PATH}
           EOF
 
-          cat > frontend/key.properties <<'EOF'
+          cat > frontend/android/app/key.properties <<'EOF'
           storePassword=${RELEASE_KEYSTORE_PASSWORD}
           keyPassword=${RELEASE_KEY_PASSWORD}
           keyAlias=${RELEASE_KEY_ALIAS}

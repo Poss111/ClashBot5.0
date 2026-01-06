@@ -24,6 +24,7 @@ env:
   JAVA_VERSION: "17"
   ANDROID_DEBUG_KEYSTORE_PATH: debug-keystore.jks
   ANDROID_RELEASE_KEYSTORE_PATH: release-keystore.jks
+  ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
 
 jobs:
   build:
@@ -41,6 +42,21 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Restore Android SDK cache
+        uses: actions/cache@v4
+        id: android-sdk-cache-build
+        with:
+          path: ${{ env.ANDROID_SDK_ROOT }}
+          key: android-sdk-${{ runner.os }}-build-android-34-34.0.0
+
+      - name: Install Android SDK components
+        if: steps.android-sdk-cache-build.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "${ANDROID_SDK_ROOT}"
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2.9.1
@@ -126,12 +142,12 @@ jobs:
       fail-fast: false
       matrix:
         device:
-          - name: pixel-6-api-34
+          - name: pixel-6-api-25
             api-level: 25
             target: google_apis
             arch: x86_64
             profile: pixel_6
-          - name: pixel-4-api-33
+          - name: pixel-4-api-25
             api-level: 25
             target: google_apis
             arch: x86_64
@@ -148,6 +164,21 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Restore Android SDK cache
+        uses: actions/cache@v4
+        id: android-sdk-cache-screens
+        with:
+          path: ${{ env.ANDROID_SDK_ROOT }}
+          key: android-sdk-${{ runner.os }}-emu-android-${{ matrix.device.api-level }}
+
+      - name: Install Android SDK components
+        if: steps.android-sdk-cache-screens.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "${ANDROID_SDK_ROOT}"
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-${{ matrix.device.api-level }}" "build-tools;${{ matrix.device.api-level }}"
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2.9.1
@@ -216,22 +247,21 @@ jobs:
           force-avd-creation: false
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: ./gradlew connectedDebugAndroidTest
-        #   script: |
-        #     flutter pub get
-        #     if [ ! -f integration_test/screenshot_test.dart ]; then
-        #       echo "Add integration_test/screenshot_test.dart that writes images to ./screenshots"
-        #       exit 1
-        #     fi
-        #     mkdir -p screenshots/${{ matrix.device.name }}
-        #     flutter test integration_test/screenshot_test.dart \
-        #       --device-id emulator-5554 \
-        #       --dart-define=MOCK_AUTH=true \
-        #       --dart-define=MOCK_API_ORIGIN=http://127.0.0.1:8080 \
-        #       --dart-define=MOCK_WS_ORIGIN=ws://127.0.0.1:0 \
-        #       --dart-define=SCREENSHOT_DIR=screenshots/${{ matrix.device.name }}
-        #     find build -path "*screenshots*" -name "*.png" -print -exec cp {} screenshots/${{ matrix.device.name }}/ \;
-        #     echo "Screenshots saved to screenshots/${{ matrix.device.name }}/"
+          script: |
+            flutter pub get
+            if [ ! -f integration_test/screenshot_test.dart ]; then
+              echo "Add integration_test/screenshot_test.dart that writes images to ./screenshots"
+              exit 1
+            fi
+            mkdir -p screenshots/${{ matrix.device.name }}
+            flutter test integration_test/screenshot_test.dart \
+              --device-id emulator-5554 \
+              --dart-define=MOCK_AUTH=true \
+              --dart-define=MOCK_API_ORIGIN=http://127.0.0.1:8080 \
+              --dart-define=MOCK_WS_ORIGIN=ws://127.0.0.1:0 \
+              --dart-define=SCREENSHOT_DIR=screenshots/${{ matrix.device.name }}
+            find build -path "*screenshots*" -name "*.png" -print -exec cp {} screenshots/${{ matrix.device.name }}/ \;
+            echo "Screenshots saved to screenshots/${{ matrix.device.name }}/"
 
       - name: Upload screenshots
         if: always()

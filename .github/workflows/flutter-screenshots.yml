@@ -24,7 +24,7 @@ env:
   JAVA_VERSION: "17"
   ANDROID_DEBUG_KEYSTORE_PATH: debug-keystore.jks
   ANDROID_RELEASE_KEYSTORE_PATH: release-keystore.jks
-  ANDROID_SDK_ROOT: android-sdk
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
 jobs:
   build:
@@ -43,33 +43,10 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
 
-      - name: Restore Android SDK cache
-        uses: actions/cache@v4
-        id: android-sdk-cache-build
-        with:
-          path: ${{ env.ANDROID_SDK_ROOT }}
-          key: android-sdk-${{ runner.os }}-build-android-34-34.0.0
-
-      - name: Install Android SDK components
-        if: steps.android-sdk-cache-build.outputs.cache-hit != 'true'
+      - name: Ensure Android SDK in PATH
         run: |
-          set -euo pipefail
-          mkdir -p "${ANDROID_SDK_ROOT}"
-
-          # Install command line tools
-          if [ ! -x "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" ]; then
-            wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-            mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools"
-            unzip -qo cmdline-tools.zip -d "${ANDROID_SDK_ROOT}/cmdline-tools"
-            # Move into expected "latest" directory
-            mv "${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools" "${ANDROID_SDK_ROOT}/cmdline-tools/latest"
-          fi
-
           echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
           echo "${ANDROID_SDK_ROOT}/platform-tools" >> $GITHUB_PATH
-
-          yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2.9.1
@@ -178,30 +155,10 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
 
-      - name: Restore Android SDK cache
-        uses: actions/cache@v4
-        id: android-sdk-cache-screens
-        with:
-          path: ${{ env.ANDROID_SDK_ROOT }}
-          key: android-sdk-${{ runner.os }}-emu-android-${{ matrix.device.api-level }}
-
-      - name: Install Android SDK components
-        if: steps.android-sdk-cache-screens.outputs.cache-hit != 'true'
+      - name: Ensure Android SDK in PATH
         run: |
-          set -euo pipefail
-          mkdir -p "${ANDROID_SDK_ROOT}"
-          if [ ! -x "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" ]; then
-            wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-            mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools"
-            unzip -qo cmdline-tools.zip -d "${ANDROID_SDK_ROOT}/cmdline-tools"
-            mv "${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools" "${ANDROID_SDK_ROOT}/cmdline-tools/latest"
-          fi
-
           echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
           echo "${ANDROID_SDK_ROOT}/platform-tools" >> $GITHUB_PATH
-
-          yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-${{ matrix.device.api-level }}" "build-tools;${{ matrix.device.api-level }}"
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2.9.1

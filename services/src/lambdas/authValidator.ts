@@ -2,6 +2,7 @@ import { APIGatewayTokenAuthorizerEvent, APIGatewayRequestAuthorizerEvent } from
 import { KMSClient, GetPublicKeyCommand } from '@aws-sdk/client-kms';
 import { createVerify } from 'crypto';
 import { logInfo } from '../shared/logger';
+import { withFunctionMetrics } from '../shared/observability';
 
 const kmsClient = new KMSClient({});
 let cachedPublicKeyPem: string | null = null;
@@ -47,7 +48,7 @@ const denyPolicy = (principalId: string, resource: string) => ({
   context: {}
 });
 
-export const handler = async (event: APIGatewayTokenAuthorizerEvent | APIGatewayRequestAuthorizerEvent) => {
+const baseHandler = async (event: APIGatewayTokenAuthorizerEvent | APIGatewayRequestAuthorizerEvent) => {
   let tokenString: string | undefined;
   logInfo('authValidator.received', { event });
   if (event.type === 'TOKEN') {
@@ -89,4 +90,6 @@ export const handler = async (event: APIGatewayTokenAuthorizerEvent | APIGateway
     return denyPolicy('unauthorized', resource);
   }
 };
+
+export const handler = withFunctionMetrics('auth.validate')(baseHandler);
 

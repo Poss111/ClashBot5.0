@@ -21,6 +21,9 @@ import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as budgets from 'aws-cdk-lib/aws-budgets';
+import * as cw from 'aws-cdk-lib/aws-cloudwatch';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as grafana from 'aws-cdk-lib/aws-grafana';
 
 export interface ClashbotInfraStackProps extends StackProps {}
 
@@ -126,7 +129,10 @@ export class ClashbotInfraStack extends Stack {
       EVENTS_TABLE: eventsTable.tableName,
       RIOT_SECRET_NAME: riotSecret.secretName,
       KMS_JWT_KEY_ID: jwtSignKey.keyId,
-      AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+      AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1',
+      ENV_NAME: envName,
+      METRICS_NAMESPACE: 'ClashOps',
+      SERVICE_NAME: 'clash-api'
     };
 
     const sharedNodeModules = [
@@ -138,6 +144,7 @@ export class ClashbotInfraStack extends Stack {
       '@aws-sdk/client-sns',
       '@aws-sdk/client-lambda',
       '@aws-sdk/client-kms',
+      'aws-embedded-metrics',
       'jsonwebtoken'
     ];
 
@@ -155,6 +162,7 @@ export class ClashbotInfraStack extends Stack {
           nodeModules: sharedNodeModules
         },
         timeout: Duration.seconds(20),
+        tracing: lambda.Tracing.ACTIVE,
         environment: {
           ...commonEnv,
           ...extraEnv
@@ -312,7 +320,8 @@ export class ClashbotInfraStack extends Stack {
     const assignmentStateMachine = new sfn.StateMachine(this, 'AssignmentWorkflow', {
       definitionBody: sfn.DefinitionBody.fromChainable(workflowDefinition),
       timeout: Duration.minutes(5),
-      stateMachineName: `${prefix}AssignmentWorkflow`
+      stateMachineName: `${prefix}AssignmentWorkflow`,
+      tracingEnabled: true
     });
 
     // Lambda to start workflow from API
@@ -323,11 +332,26 @@ export class ClashbotInfraStack extends Stack {
     assignmentStateMachine.grantStartExecution(startAssignmentFn);
     broadcastEventFn.grantInvoke(startAssignmentFn);
 
+    const apiLambdaFns = [
+      tournamentsApiFn,
+      registrationsApiFn,
+      teamsApiFn,
+      assignRoleFn,
+      usersApiFn,
+      authBrokerFn,
+      registerTournamentFn,
+      updateTournamentFn,
+      startAssignmentFn,
+      websocketHandlerFn
+    ];
+
     // API Gateway (REST)
     const api = new apigw.RestApi(this, 'ClashApi', {
       restApiName: `${prefix}ClashBot API`,
       deployOptions: {
-        stageName: envName
+        stageName: envName,
+        tracingEnabled: true,
+        metricsEnabled: true
       },
       defaultCorsPreflightOptions: {
         allowOrigins: apigw.Cors.ALL_ORIGINS,
@@ -525,6 +549,187 @@ function handler(event) {
       }
     });
 
+    // CloudWatch dashboard placeholder for future widgets/alerts
+    const dashboard = new cw.Dashboard(this, 'OperationsDashboard', {
+      dashboardName: `${prefix}ClashOps`,
+      periodOverride: cw.PeriodOverride.AUTO
+    });
+    const newUserMetricNamespace = 'ClashOps';
+    const newUserMetricName = 'NewUsersRegistered';
+
+    new logs.MetricFilter(this, 'NewUserRegisteredMetricFilter', {
+      logGroup: authBrokerFn.logGroup,
+      metricNamespace: newUserMetricNamespace,
+      metricName: newUserMetricName,
+      filterPattern: logs.FilterPattern.anyTerm('authBroker.newUserRegistered'),
+      metricValue: '1',
+      defaultValue: 0
+    });
+    const newUserMetric = new cw.Metric({
+      namespace: newUserMetricNamespace,
+      metricName: newUserMetricName,
+      statistic: 'Sum'
+    });
+
+    const baseDimensions = { Service: 'clash-api', Env: envName };
+    const apiRequests = new cw.Metric({
+      namespace: 'ClashOps',
+      metricName: 'Requests',
+      statistic: 'Sum',
+      period: Duration.minutes(5),
+      dimensionsMap: baseDimensions
+    });
+    const apiErrors = new cw.Metric({
+      namespace: 'ClashOps',
+      metricName: 'Errors',
+      statistic: 'Sum',
+      period: Duration.minutes(5),
+      dimensionsMap: baseDimensions
+    });
+    const apiLatencyP50 = new cw.Metric({
+      namespace: 'ClashOps',
+      metricName: 'LatencyMs',
+      statistic: 'p50',
+      period: Duration.minutes(5),
+      dimensionsMap: baseDimensions
+    });
+    const apiLatencyP90 = new cw.Metric({
+      namespace: 'ClashOps',
+      metricName: 'LatencyMs',
+      statistic: 'p90',
+      period: Duration.minutes(5),
+      dimensionsMap: baseDimensions
+    });
+    const apiLatencyP99 = new cw.Metric({
+      namespace: 'ClashOps',
+      metricName: 'LatencyMs',
+      statistic: 'p99',
+      period: Duration.minutes(5),
+      dimensionsMap: baseDimensions
+    });
+    const featureInvocations = new cw.Metric({
+      namespace: 'ClashOps',
+      metricName: 'FeatureInvocations',
+      statistic: 'Sum',
+      period: Duration.minutes(5),
+      dimensionsMap: baseDimensions
+    });
+
+    const errorRateExpr = new cw.MathExpression({
+      // Avoid mixing scalars with time series; add a tiny constant to prevent /0
+      expression: '100 * e / (r + 0.0001)',
+      usingMetrics: { r: apiRequests, e: apiErrors },
+      label: 'Error rate (%)',
+      period: Duration.minutes(5)
+    });
+
+    const throttleExpression = new cw.MathExpression({
+      expression: apiLambdaFns.map((_, idx) => `m${idx}`).join(' + ') || '0',
+      usingMetrics: apiLambdaFns.reduce<Record<string, cw.IMetric>>((acc, fn, idx) => {
+        acc[`m${idx}`] = fn.metricThrottles({ period: Duration.minutes(5), statistic: 'Sum' });
+        return acc;
+      }, {}),
+      label: 'Lambda throttles (sum)',
+      period: Duration.minutes(5)
+    });
+
+    new cw.Alarm(this, 'ApiErrorRateHigh', {
+      metric: errorRateExpr,
+      threshold: 2,
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      alarmDescription: 'API 5xx/4xx error rate above 2% over 5 minutes'
+    });
+
+    new cw.Alarm(this, 'ApiLatencyP99High', {
+      metric: apiLatencyP99,
+      threshold: 1500,
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      alarmDescription: 'API p99 latency above 1.5s'
+    });
+
+    new cw.Alarm(this, 'ApiThrottlesDetected', {
+      metric: throttleExpression,
+      threshold: 0,
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      alarmDescription: 'Lambda throttles detected across API handlers'
+    });
+
+    new cw.Alarm(this, 'WorkflowFailure', {
+      metric: assignmentStateMachine.metricFailed({ period: Duration.minutes(5) }),
+      threshold: 0,
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      alarmDescription: 'Assignment workflow failed'
+    });
+
+    new cw.Alarm(this, 'DynamoDbThrottle', {
+      metric: tournamentsTable.metricThrottledRequests({ period: Duration.minutes(5), statistic: 'Sum' }),
+      threshold: 0,
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
+      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      alarmDescription: 'DynamoDB throttled requests detected on tournaments table'
+    });
+
+    dashboard.addWidgets(
+      new cw.TextWidget({
+        markdown: '# ClashBot Operations Dashboard\nAdd graphs/alarms as needed.',
+        height: 3,
+        width: 24
+      }),
+      new cw.SingleValueWidget({
+        title: 'New Users Registered',
+        metrics: [newUserMetric],
+        width: 6,
+        setPeriodToTimeRange: true
+      }),
+      new cw.GraphWidget({
+        title: 'API Requests',
+        left: [
+          apiRequests.with({ label: 'Requests' }),
+          apiErrors.with({ label: 'Errors' })
+        ],
+        legendPosition: cw.LegendPosition.BOTTOM,
+        width: 8
+      }),
+      new cw.GraphWidget({
+        title: 'API Error Rate (%)',
+        left: [errorRateExpr],
+        legendPosition: cw.LegendPosition.BOTTOM,
+        width: 8
+      }),
+      new cw.GraphWidget({
+        title: 'API Latency (ms)',
+        left: [
+          apiLatencyP50.with({ label: 'p50' }),
+          apiLatencyP90.with({ label: 'p90' }),
+          apiLatencyP99.with({ label: 'p99' })
+        ],
+        legendPosition: cw.LegendPosition.BOTTOM,
+        width: 8
+      }),
+      new cw.GraphWidget({
+        title: 'Feature Invocations',
+        left: [featureInvocations],
+        legendPosition: cw.LegendPosition.BOTTOM,
+        width: 12
+      }),
+      new cw.GraphWidget({
+        title: 'Workflow Success vs Fail',
+        left: [assignmentStateMachine.metricSucceeded({ period: Duration.minutes(5) })],
+        right: [assignmentStateMachine.metricFailed({ period: Duration.minutes(5) })],
+        legendPosition: cw.LegendPosition.BOTTOM,
+        width: 12
+      })
+    );
+
     new CfnOutput(this, 'CloudFrontDomain', {
       value: distribution.domainName,
       description: 'CloudFront distribution domain for the frontend'
@@ -543,6 +748,11 @@ function handler(event) {
     new CfnOutput(this, 'WebSocketApiId', {
       value: websocketApi.apiId,
       description: 'WebSocket API ID'
+    });
+
+    new CfnOutput(this, 'CloudWatchDashboardName', {
+      value: dashboard.dashboardName,
+      description: 'CloudWatch dashboard name (view in the CloudWatch console)'
     });
 
     // Budgets: email alerts at $10, $25, $50 for tagged resources

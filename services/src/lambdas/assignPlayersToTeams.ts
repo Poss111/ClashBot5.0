@@ -1,12 +1,13 @@
 import { QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../shared/db';
 import { logInfo } from '../shared/logger';
+import { withFunctionMetrics } from '../shared/observability';
 
 interface EventInput {
   tournamentId: string;
 }
 
-export const handler = async (event: EventInput) => {
+const baseHandler = async (event: EventInput) => {
   const tournamentId = event.tournamentId;
   if (!tournamentId) {
     throw new Error('tournamentId is required');
@@ -55,4 +56,6 @@ export const handler = async (event: EventInput) => {
   logInfo('assignPlayers.completed', { tournamentId, teamId, assignedCount });
   return { tournamentId, teamId, assignedCount };
 };
+
+export const handler = withFunctionMetrics('assignPlayers')(baseHandler);
 

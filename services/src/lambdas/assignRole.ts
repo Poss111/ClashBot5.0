@@ -2,6 +2,7 @@ import { UpdateCommand, GetCommand, QueryCommand, PutCommand, DeleteCommand } fr
 import { docClient } from '../shared/db';
 import { jsonResponse } from '../shared/http';
 import { logError, logInfo } from '../shared/logger';
+import { withApiMetrics } from '../shared/observability';
 
 const USERS_TABLE = process.env.USERS_TABLE;
 
@@ -27,7 +28,7 @@ const lookupDisplayName = async (userId: string | undefined): Promise<string | n
   return (item?.displayName as string) ?? (item?.name as string) ?? null;
 };
 
-export const handler = async (event: any) => {
+const baseHandler = async (event: any) => {
   const tournamentId = event.pathParameters?.id;
   const teamId = event.pathParameters?.teamId;
   const role = event.pathParameters?.role;
@@ -177,4 +178,9 @@ export const handler = async (event: any) => {
     return jsonResponse(500, { message: 'failed to assign role' });
   }
 };
+
+export const handler = withApiMetrics({
+  defaultRoute: '/tournaments/{id}/teams/{teamId}/roles/{role}',
+  feature: (event) => ((event as any)?.httpMethod === 'DELETE' ? 'roles.remove' : 'roles.assign')
+})(baseHandler);
 

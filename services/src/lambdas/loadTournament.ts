@@ -1,11 +1,12 @@
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../shared/db';
+import { withFunctionMetrics } from '../shared/observability';
 
 interface EventInput {
   tournamentId?: string;
 }
 
-export const handler = async (event: EventInput) => {
+const baseHandler = async (event: EventInput) => {
   const tournamentId = event.tournamentId;
   if (!tournamentId) {
     throw new Error('tournamentId is required');
@@ -32,4 +33,6 @@ export const handler = async (event: EventInput) => {
 
   return item;
 };
+
+export const handler = withFunctionMetrics('loadTournament')(baseHandler);
 

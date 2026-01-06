@@ -2,6 +2,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand, DeleteCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi';
 import { logInfo, logError } from '../shared/logger';
+import { withFunctionMetrics } from '../shared/observability';
 import { randomUUID } from 'crypto';
 
 const ddbClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
@@ -13,7 +14,7 @@ interface BroadcastEvent {
   causedBy?: string;
 }
 
-export const handler = async (event: BroadcastEvent) => {
+const baseHandler = async (event: BroadcastEvent) => {
   const connectionsTable = process.env.CONNECTIONS_TABLE!;
   const eventsTable = process.env.EVENTS_TABLE;
   const websocketEndpoint = process.env.WEBSOCKET_ENDPOINT!;
@@ -97,4 +98,6 @@ export const handler = async (event: BroadcastEvent) => {
     });
   }
 };
+
+export const handler = withFunctionMetrics('broadcastEvent')(baseHandler);
 

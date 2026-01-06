@@ -2,8 +2,9 @@ import { PutCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../shared/db';
 import { jsonResponse } from '../shared/http';
 import { logInfo } from '../shared/logger';
+import { withApiMetrics } from '../shared/observability';
 
-export const handler = async (event: any) => {
+const baseHandler = async (event: any) => {
   if (event.httpMethod !== 'POST') {
     return jsonResponse(405, { message: 'Method not allowed' });
   }
@@ -33,4 +34,9 @@ export const handler = async (event: any) => {
   logInfo('registrationsApi.created', { tournamentId, playerId });
   return jsonResponse(201, { tournamentId, playerId, status: 'pending' });
 };
+
+export const handler = withApiMetrics({
+  defaultRoute: '/tournaments/{id}/registrations',
+  feature: 'registration.create'
+})(baseHandler);
 

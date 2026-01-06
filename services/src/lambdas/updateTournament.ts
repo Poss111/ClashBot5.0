@@ -5,8 +5,9 @@ import { randomUUID } from 'crypto';
 import { docClient } from '../shared/db';
 import { jsonResponse } from '../shared/http';
 import { logInfo, logError } from '../shared/logger';
+import { withApiMetrics } from '../shared/observability';
 
-export const handler = async (event: APIGatewayProxyEvent) => {
+const baseHandler = async (event: APIGatewayProxyEvent) => {
   const traceId = randomUUID();
 
   try {
@@ -111,5 +112,10 @@ export const handler = async (event: APIGatewayProxyEvent) => {
     return jsonResponse(500, { statusCode: 500, message: 'Failed to update tournament', traceId });
   }
 };
+
+export const handler = withApiMetrics({
+  defaultRoute: '/tournaments/{id}',
+  feature: 'tournament.update'
+})(baseHandler);
 
 

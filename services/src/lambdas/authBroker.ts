@@ -3,6 +3,7 @@ import { KMSClient, SignCommand } from '@aws-sdk/client-kms';
 import { docClient } from '../shared/db';
 import { jsonResponse } from '../shared/http';
 import { logInfo, logError } from '../shared/logger';
+import { withApiMetrics } from '../shared/observability';
 import { createSign } from 'crypto';
 
 const GOOGLE_TOKENINFO = 'https://oauth2.googleapis.com/tokeninfo';
@@ -45,7 +46,7 @@ async function signJwt(payload: Record<string, any>): Promise<string> {
   return `${signingInput}.${signature}`;
 }
 
-export const handler = async (event: any) => {
+const baseHandler = async (event: any) => {
   try {
     logInfo('authBroker.start', {
       hasBody: !!event?.body,
@@ -146,6 +147,15 @@ export const handler = async (event: any) => {
       })
     );
 
+    if (wasNewUser) {
+      logInfo('authBroker.newUserRegistered', {
+        email,
+        role,
+        provider: 'google',
+        displayName: existingDisplayName ?? null
+      });
+    }
+
     logInfo('authBroker.issued', { email, role, wasNewUser });
     return jsonResponse(200, { token, role, exp, isNewUser: wasNewUser, hasDisplayName: !!existingDisplayName, displayName: existingDisplayName });
   } catch (err) {
@@ -153,4 +163,9 @@ export const handler = async (event: any) => {
     return jsonResponse(500, { message: 'Authentication failed' });
   }
 };
+
+export const handler = withApiMetrics({
+  defaultRoute: '/auth/token',
+  feature: 'auth.token'
+})(baseHandler);
 

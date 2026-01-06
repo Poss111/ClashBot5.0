@@ -3,6 +3,7 @@ import { PutCommand } from '@aws-sdk/lib-dynamodb';
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { docClient } from '../shared/db';
 import { logInfo, logError } from '../shared/logger';
+import { withFunctionMetrics } from '../shared/observability';
 
 interface ClashTournament {
   id: number;
@@ -38,7 +39,7 @@ const resolveApiKey = (secretString?: string): string => {
   return secretString;
 };
 
-export const handler = async (): Promise<FetchResult> => {
+const baseHandler = async (): Promise<FetchResult> => {
   const platform = process.env.RIOT_PLATFORM ?? 'na1';
   const secret = await secretsClient.send(
     new GetSecretValueCommand({
@@ -106,4 +107,6 @@ export const handler = async (): Promise<FetchResult> => {
 
   return { tournaments };
 };
+
+export const handler = withFunctionMetrics('fetchUpcomingTournaments')(baseHandler);
 

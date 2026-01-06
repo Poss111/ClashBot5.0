@@ -2,8 +2,9 @@ import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../shared/db';
 import { jsonResponse } from '../shared/http';
 import { logInfo } from '../shared/logger';
+import { withApiMetrics } from '../shared/observability';
 
-export const handler = async (event: any) => {
+const baseHandler = async (event: any) => {
   const tournamentId = event.pathParameters?.id;
 
   if (event.httpMethod === 'GET') {
@@ -37,4 +38,6 @@ export const handler = async (event: any) => {
 
   return jsonResponse(405, { message: 'Method not allowed' });
 };
+
+export const handler = withApiMetrics({ defaultRoute: '/tournaments' })(baseHandler);
 

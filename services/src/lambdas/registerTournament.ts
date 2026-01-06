@@ -3,10 +3,11 @@ import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { APIGatewayProxyEvent } from 'aws-lambda';
 import { docClient } from '../shared/db';
 import { logInfo, logError } from '../shared/logger';
+import { withApiMetrics } from '../shared/observability';
 import { randomUUID } from 'crypto';
 import { jsonResponse } from '../shared/http';
 
-export const handler = async (event: APIGatewayProxyEvent) => {
+const baseHandler = async (event: APIGatewayProxyEvent) => {
   const traceId = randomUUID();
 
   try {
@@ -126,4 +127,9 @@ export const handler = async (event: APIGatewayProxyEvent) => {
     });
   }
 };
+
+export const handler = withApiMetrics({
+  defaultRoute: '/tournaments',
+  feature: 'tournament.create'
+})(baseHandler);
 

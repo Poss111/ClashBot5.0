@@ -2,6 +2,7 @@ import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../shared/db';
 import { jsonResponse } from '../shared/http';
 import { logError, logInfo } from '../shared/logger';
+import { withApiMetrics } from '../shared/observability';
 
 type UserRecord = {
   userId: string;
@@ -27,7 +28,7 @@ const sanitizeDisplayName = (value: string | undefined): string | null => {
   return valid ? trimmed : null;
 };
 
-export const handler = async (event: any) => {
+const baseHandler = async (event: any) => {
   if (!USERS_TABLE) {
     logError('usersApi.misconfigured', { USERS_TABLE });
     return jsonResponse(500, { message: 'Users table not configured' });
@@ -115,5 +116,10 @@ export const handler = async (event: any) => {
     return jsonResponse(500, { message: 'Failed to handle user request' });
   }
 };
+
+export const handler = withApiMetrics({
+  defaultRoute: '/users/me',
+  feature: (event) => ((event as any)?.httpMethod === 'GET' ? 'user.me' : 'user.displayName')
+})(baseHandler);
 
 

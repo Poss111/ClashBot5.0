@@ -1,0 +1,134 @@
+name: Flutter build and screenshots
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "frontend/**"
+  workflow_dispatch:
+    inputs:
+      run-screenshots:
+        description: "Run screenshot capture job"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "flutter-screens-${{ github.ref }}"
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.24.4"
+  JAVA_VERSION: "17"
+
+jobs:
+  build:
+    name: Build Flutter app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Build APK (debug)
+        run: flutter build apk --debug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: frontend/build/app/outputs/flutter-apk/app-debug.apk
+
+  screenshots:
+    name: Capture screenshots
+    needs: build
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.run-screenshots }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        device:
+          - name: pixel-6-api-34
+            api-level: 34
+            target: google_apis
+            arch: x86_64
+            profile: pixel_6
+          - name: pixel-4-api-33
+            api-level: 33
+            target: google_apis
+            arch: x86_64
+            profile: pixel_4
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Prepare screenshots folder
+        run: mkdir -p frontend/screenshots/${{ matrix.device.name }}
+        working-directory: .
+
+      - name: Launch emulator and run screenshot test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.device.api-level }}
+          target: ${{ matrix.device.target }}
+          arch: ${{ matrix.device.arch }}
+          profile: ${{ matrix.device.profile }}
+          script: |
+            cd frontend
+            flutter pub get
+            if [ ! -f integration_test/screenshot_test.dart ]; then
+              echo "Add integration_test/screenshot_test.dart that writes images to ./screenshots"
+              exit 1
+            fi
+            mkdir -p screenshots/${{ matrix.device.name }}
+            flutter test integration_test/screenshot_test.dart \
+              --device-id emulator-5554 \
+              --dart-define=MOCK_AUTH=true \
+              --dart-define=MOCK_API_ORIGIN=http://127.0.0.1:8080 \
+              --dart-define=MOCK_WS_ORIGIN=ws://127.0.0.1:0 \
+              --dart-define=SCREENSHOT_DIR=screenshots/${{ matrix.device.name }}
+            find build -path "*screenshots*" -name "*.png" -print -exec cp {} screenshots/${{ matrix.device.name }}/ \;
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ matrix.device.name }}
+          path: frontend/screenshots/${{ matrix.device.name }}/
+

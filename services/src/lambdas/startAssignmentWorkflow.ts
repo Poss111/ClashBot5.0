@@ -1,11 +1,12 @@
 import { SFNClient, StartExecutionCommand } from '@aws-sdk/client-sfn';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { logInfo, logError } from '../shared/logger';
+import { withApiMetrics } from '../shared/observability';
 
 const sfnClient = new SFNClient({});
 const lambdaClient = new LambdaClient({});
 
-export const handler = async (event: any) => {
+const baseHandler = async (event: any) => {
   const body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body ?? {};
   const tournamentId = body.tournamentId ?? event.pathParameters?.id ?? event.tournamentId;
   const causedBy =
@@ -89,4 +90,9 @@ export const handler = async (event: any) => {
   }
 
 };
+
+export const handler = withApiMetrics({
+  defaultRoute: '/tournaments/{id}/assign',
+  feature: 'workflow.start'
+})(baseHandler);
 

@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { docClient } from '../shared/db';
 import { jsonResponse } from '../shared/http';
 import { logInfo } from '../shared/logger';
+import { withApiMetrics } from '../shared/observability';
 
 const USERS_TABLE = process.env.USERS_TABLE;
 
@@ -41,7 +42,7 @@ const fetchDisplayNames = async (ids: string[]): Promise<Record<string, string>>
   return results;
 };
 
-export const handler = async (event: any) => {
+const baseHandler = async (event: any) => {
   const tournamentId = event.pathParameters?.id;
   const teamIdParam = event.pathParameters?.teamId;
   const method = event.httpMethod;
@@ -234,4 +235,15 @@ export const handler = async (event: any) => {
 
   return jsonResponse(405, { message: 'Method not allowed' });
 };
+
+export const handler = withApiMetrics({
+  defaultRoute: '/tournaments/{id}/teams',
+  feature: (event) => {
+    const method = (event as any)?.httpMethod;
+    if (method === 'GET') return 'teams.list';
+    if (method === 'POST') return 'teams.create';
+    if (method === 'DELETE') return 'teams.delete';
+    return undefined;
+  }
+})(baseHandler);
 

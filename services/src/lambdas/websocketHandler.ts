@@ -2,6 +2,7 @@ import { ApiGatewayManagementApiClient, PostToConnectionCommand } from '@aws-sdk
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, DeleteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { logInfo, logError } from '../shared/logger';
+import { withApiMetrics } from '../shared/observability';
 
 const ddbClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const connectionsTable = process.env.CONNECTIONS_TABLE!;
@@ -16,7 +17,7 @@ interface WebSocketEvent {
   body?: string;
 }
 
-export const handler = async (event: WebSocketEvent) => {
+const baseHandler = async (event: WebSocketEvent) => {
   const { connectionId, routeKey } = event.requestContext;
   const endpoint = `https://${event.requestContext.domainName}/${event.requestContext.stage}`;
   const apiGatewayClient = new ApiGatewayManagementApiClient({ endpoint });
@@ -46,6 +47,17 @@ export const handler = async (event: WebSocketEvent) => {
     return { statusCode: 500, body: JSON.stringify({ message: 'Internal server error' }) };
   }
 };
+
+export const handler = withApiMetrics({
+  defaultRoute: '/events',
+  source: 'ws',
+  feature: (event) => {
+    const route = (event as any)?.requestContext?.routeKey;
+    if (route === '$connect') return 'ws.connect';
+    if (route === '$disconnect') return 'ws.disconnect';
+    return 'ws.message';
+  }
+})(baseHandler);
 
 async function handleConnect(connectionId: string) {
   await ddbClient.send(

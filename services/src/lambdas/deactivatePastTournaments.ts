@@ -1,8 +1,9 @@
 import { ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../shared/db';
 import { logInfo } from '../shared/logger';
+import { withFunctionMetrics } from '../shared/observability';
 
-export const handler = async () => {
+const baseHandler = async () => {
   const now = new Date().toISOString();
   const tournaments = await docClient.send(
     new ScanCommand({
@@ -31,4 +32,6 @@ export const handler = async () => {
   logInfo('deactivatePast.closed', { closed });
   return { closed };
 };
+
+export const handler = withFunctionMetrics('deactivatePastTournaments')(baseHandler);
 

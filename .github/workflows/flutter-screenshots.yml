@@ -24,7 +24,7 @@ env:
   JAVA_VERSION: "17"
   ANDROID_DEBUG_KEYSTORE_PATH: debug-keystore.jks
   ANDROID_RELEASE_KEYSTORE_PATH: release-keystore.jks
-  ANDROID_SDK_ROOT: ${{ runner.temp }}/android-sdk
+  ANDROID_SDK_ROOT: android-sdk
 
 jobs:
   build:

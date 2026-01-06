@@ -94,21 +94,24 @@ class HomeScreen extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         int crossAxisCount = 3;
+        double childAspectRatio = 2.6;
         if (constraints.maxWidth < 600) {
           crossAxisCount = 1;
+          childAspectRatio = 0.9; // give cards more height on narrow screens
         } else if (constraints.maxWidth < 900) {
           crossAxisCount = 2;
+          childAspectRatio = 1.6;
         }
 
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-            childAspectRatio: 2.6,
-          ),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: childAspectRatio,
+            ),
           itemCount: features.length,
           itemBuilder: (context, index) {
             final feature = features[index];

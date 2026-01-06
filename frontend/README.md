@@ -28,3 +28,4 @@ Screenshots can be taken using the `flutter test integration_test/screenshot_tes
 The screenshots will be saved in the `screenshots` directory.
 The screenshots will be named after the device name.
 The screenshots will be saved in the `screenshots` directory.
+

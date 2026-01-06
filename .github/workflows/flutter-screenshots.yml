@@ -101,6 +101,15 @@ jobs:
       - name: Build APK (debug)
         run: flutter build apk --debug
 
+      - name: Verify APK exists
+        run: |
+            if [ ! -f build/app/outputs/apk/debug/app-debug.apk ]; then
+                echo "Android debug APK does not exist"
+            exit 1
+            else
+                echo "Android debug APK exists"
+            fi
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -111,7 +120,7 @@ jobs:
     name: Capture screenshots
     needs: build
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.run-screenshots }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -187,7 +196,7 @@ jobs:
           target: ${{ matrix.device.target }}
           arch: ${{ matrix.device.arch }}
           profile: ${{ matrix.device.profile }}
-          emulator-boot-timeout: 900
+          emulator-boot-timeout: 300
           force-avd-creation: true
           disable-animations: true
           ram-size: 3072M

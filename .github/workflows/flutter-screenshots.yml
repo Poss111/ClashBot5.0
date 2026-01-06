@@ -43,7 +43,7 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
 
       - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@v2.9.1
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -111,7 +111,7 @@ jobs:
             fi
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6.0.0
         with:
           name: app-debug-apk
           path: ${{ github.workspace }}/frontend/build/app/outputs/apk/debug/app-debug.apk
@@ -150,7 +150,7 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
 
       - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@v2.9.1
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -194,7 +194,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Gradle cache
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v5.0.0
         
       - name: AVD cache
         uses: actions/cache@v4
@@ -209,7 +209,7 @@ jobs:
         run: mkdir -p screenshots/${{ matrix.device.name }}
 
       - name: Launch emulator and run screenshot test
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@v2.35.0
         with:
           api-level: ${{ matrix.device.api-level }}
           emulator-boot-timeout: 120
@@ -235,7 +235,7 @@ jobs:
 
       - name: Upload screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6.0.0
         with:
           name: screenshots-${{ matrix.device.name }}
           path: ${{ github.workspace }}/frontend/screenshots/${{ matrix.device.name }}/

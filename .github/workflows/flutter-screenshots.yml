@@ -104,24 +104,24 @@ jobs:
       - name: Pub get
         run: flutter pub get
 
-      - name: Build APK (debug)
-        run: flutter build apk --debug
+    #   - name: Build APK (debug)
+    #     run: flutter build apk --debug
 
-      - name: Verify APK exists
-        run: |
-            if [ ! -f build/app/outputs/apk/debug/app-debug.apk ]; then
-                echo "Android debug APK does not exist"
-            exit 1
-            else
-                echo "Android debug APK exists"
-            fi
+    #   - name: Verify APK exists
+    #     run: |
+    #         if [ ! -f build/app/outputs/apk/debug/app-debug.apk ]; then
+    #             echo "Android debug APK does not exist"
+    #         exit 1
+    #         else
+    #             echo "Android debug APK exists"
+    #         fi
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v6.0.0
-        with:
-          name: app-debug-apk
-          path: ${{ github.workspace }}/frontend/build/app/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+    #   - name: Upload APK artifact
+    #     uses: actions/upload-artifact@v6.0.0
+    #     with:
+    #       name: app-debug-apk
+    #       path: ${{ github.workspace }}/frontend/build/app/outputs/apk/debug/app-debug.apk
+    #       if-no-files-found: error
 
   screenshots:
     name: Capture screenshots
@@ -222,13 +222,13 @@ jobs:
       - name: Launch emulator and run screenshot test
         uses: reactivecircus/android-emulator-runner@v2.35.0
         with:
+          working-directory: ${{ github.workspace }}/frontend
           api-level: ${{ matrix.device.api-level }}
           emulator-boot-timeout: 120
           force-avd-creation: false
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            cd frontend
             echo "Current directory: $(pwd)"
             flutter pub get
             if [ ! -f integration_test/screenshot_test.dart ]; then

@@ -22,3 +22,10 @@ This is the Flutter frontend application for ClashBot. It supports multiple plat
 
 The API base URL can be configured in `lib/services/api_config.dart`.
 
+## Screenshots
+
+Screenshots can be taken using the `flutter test integration_test/screenshot_test.dart` command.
+The screenshots will be saved in the `screenshots` directory.
+The screenshots will be named after the device name.
+The screenshots will be saved in the `screenshots` directory.
+

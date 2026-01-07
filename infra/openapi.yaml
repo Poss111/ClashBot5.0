@@ -85,6 +85,63 @@ components:
       required:
         - teamId
         - tournamentId
+    DraftSide:
+      type: object
+      properties:
+        firstRoundBans:
+          type: array
+          items:
+            type: string
+          minItems: 3
+          maxItems: 3
+        secondRoundBans:
+          type: array
+          items:
+            type: string
+          minItems: 2
+          maxItems: 2
+        firstRoundPicks:
+          type: array
+          items:
+            type: string
+          minItems: 3
+          maxItems: 3
+        secondRoundPicks:
+          type: array
+          items:
+            type: string
+          minItems: 2
+          maxItems: 2
+      required:
+        - firstRoundBans
+        - secondRoundBans
+        - firstRoundPicks
+        - secondRoundPicks
+    DraftProposal:
+      type: object
+      properties:
+        tournamentId:
+          type: string
+        teamId:
+          type: string
+        ourSide:
+          $ref: '#/components/schemas/DraftSide'
+        enemySide:
+          $ref: '#/components/schemas/DraftSide'
+        notes:
+          type: string
+        updatedBy:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - tournamentId
+        - teamId
+        - ourSide
+        - enemySide
+        - updatedBy
+        - updatedAt
     RegistrationRequest:
       type: object
       properties:
@@ -361,6 +418,54 @@ paths:
           description: Only captain can delete
         '404':
           description: Team not found
+  /{stage}/tournaments/{id}/teams/{teamId}/draft:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: path
+        name: teamId
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Get draft proposal for a team (team members only)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Draft proposal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftProposal'
+        '403':
+          description: Team membership required
+        '404':
+          description: Draft not found
+    put:
+      summary: Save draft proposal for a team (team members only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftProposal'
+      responses:
+        '200':
+          description: Draft saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftProposal'
+        '403':
+          description: Team membership required
+        '404':
+          description: Team not found
   /{stage}/tournaments/{id}/teams/{teamId}/roles/{role}:
     parameters:
       - in: path
@@ -413,6 +518,75 @@ paths:
           description: Role already filled
         '404':
           description: Team not found
+  /{stage}/users/me:
+    get:
+      summary: Get current user profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId:
+                    type: string
+                  email:
+                    type: string
+                  displayName:
+                    type: string
+                  name:
+                    type: string
+                  picture:
+                    type: string
+                  role:
+                    type: string
+                  favoriteChampions:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: string
+  /{stage}/users/me/display-name:
+    put:
+      summary: Update display name
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+      responses:
+        '200':
+          description: Updated
+  /{stage}/users/me/favorite-champions:
+    put:
+      summary: Set favorite champions by role
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                favoriteChampions:
+                  type: object
+                  additionalProperties:
+                    type: array
+                    items:
+                      type: string
+      responses:
+        '200':
+          description: Updated favorites
     delete:
       summary: Remove a player from a role on a team (captain only)
       security:

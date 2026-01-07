@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../models/champion.dart';
+import '../services/champion_data_service.dart';
 import '../services/user_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -14,20 +16,32 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _formKey = GlobalKey<FormState>();
   final _userService = UserService();
+  final _championService = ChampionDataService();
+  final List<String> _roleOrder = const ['Top', 'Jungle', 'Mid', 'Bot', 'Support'];
+  final Map<String, TextEditingController> _favoriteControllers = {};
   late final TextEditingController _nameController;
   bool _saving = false;
+  bool _favoritesSaving = false;
+  bool _loadingProfile = false;
   String? _error;
   String? _success;
+  Map<String, List<String>> _favoriteChampions = {};
+  late Future<List<Champion>> _championsFuture;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.initialDisplayName ?? '');
+    _championsFuture = _championService.loadChampions();
+    _loadProfile();
   }
 
   @override
   void dispose() {
     _nameController.dispose();
+    for (final controller in _favoriteControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -68,6 +82,171 @@ class _SettingsScreenState extends State<SettingsScreen> {
         setState(() => _saving = false);
       }
     }
+  }
+
+  Future<void> _loadProfile() async {
+    setState(() => _loadingProfile = true);
+    try {
+      final profile = await _userService.getCurrentUser();
+      if (!mounted) return;
+      setState(() {
+        final favs = <String, List<String>>{};
+        (profile.favoriteChampions ?? {}).forEach((k, v) {
+          favs[k] = v.where((e) => e.isNotEmpty).take(3).toList();
+        });
+        _favoriteChampions = favs;
+        if ((_nameController.text.trim().isEmpty) && (profile.displayName?.trim().isNotEmpty ?? false)) {
+          _nameController.text = profile.displayName!.trim();
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = _error ?? 'Failed to load profile: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _loadingProfile = false);
+      }
+    }
+  }
+
+  Future<void> _saveFavorites() async {
+    setState(() {
+      _error = null;
+      _success = null;
+      _favoritesSaving = true;
+    });
+    try {
+      final cleaned = <String, List<String>>{};
+      _favoriteChampions.forEach((role, list) {
+        final filtered = list.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().take(3).toList();
+        if (filtered.isNotEmpty) cleaned[role] = filtered;
+      });
+      if (cleaned.isEmpty) {
+        setState(() {
+          _error = 'Select at least one favorite champion';
+          _favoritesSaving = false;
+        });
+        return;
+      }
+      await _userService.setFavoriteChampions(cleaned);
+      if (!mounted) return;
+      setState(() {
+        _success = 'Favorite champions updated';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Failed to save favorites: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _favoritesSaving = false);
+      }
+    }
+  }
+
+  TextEditingController _controllerForRole(String role, List<Champion> champions) {
+    final existing = _favoriteControllers[role];
+    if (existing != null) return existing;
+    final controller = TextEditingController();
+    _favoriteControllers[role] = controller;
+    return controller;
+  }
+
+  Champion? _championForId(List<Champion> champions, String? id) {
+    if (id == null) return null;
+    final lower = id.toLowerCase();
+    for (final c in champions) {
+      if (c.id.toLowerCase() == lower || c.name.toLowerCase() == lower || c.key == id) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  void _addFavorite(String role, Champion champ) {
+    final list = _favoriteChampions[role] ?? [];
+    if (list.contains(champ.id)) return;
+    if (list.length >= 3) return;
+    setState(() {
+      final updated = List<String>.from(list)..add(champ.id);
+      _favoriteChampions[role] = updated;
+    });
+  }
+
+  void _removeFavorite(String role, String champId) {
+    final list = _favoriteChampions[role] ?? [];
+    setState(() {
+      _favoriteChampions[role] = list.where((id) => id != champId).toList();
+    });
+  }
+
+  Widget _favoriteAutocomplete(String role, List<Champion> champions) {
+    final controller = _controllerForRole(role, champions);
+    final selections = _favoriteChampions[role] ?? [];
+    return Autocomplete<Champion>(
+      optionsBuilder: (TextEditingValue textEditingValue) {
+        final query = textEditingValue.text.trim().toLowerCase();
+        if (selections.length >= 3) return const Iterable<Champion>.empty();
+        if (query.isEmpty) return const Iterable<Champion>.empty();
+        return champions
+            .where((c) => !selections.contains(c.id) && c.name.toLowerCase().contains(query))
+            .take(5);
+      },
+      displayStringForOption: (c) => c.name,
+      fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+        // Keep controller in sync with our stored instance.
+        if (textController != controller) {
+          textController
+            ..text = controller.text
+            ..selection = controller.selection;
+          _favoriteControllers[role] = textController;
+        }
+        return TextField(
+          controller: textController,
+          focusNode: focusNode,
+          decoration: InputDecoration(labelText: '$role favorite'),
+          onChanged: (val) {
+            if (val.trim().isEmpty) {
+              setState(() {
+                // Do not clear selections; just reset input.
+              });
+            }
+          },
+        );
+      },
+      onSelected: (Champion champ) {
+        setState(() {
+          _addFavorite(role, champ);
+          controller.clear();
+        });
+      },
+      optionsViewBuilder: (context, onSelected, options) {
+        final opts = options.toList();
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 4,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: opts.length,
+              itemBuilder: (context, index) {
+                final champ = opts[index];
+                return ListTile(
+                  dense: true,
+                  title: Text(champ.name),
+                  subtitle: champ.tags.isNotEmpty ? Text(champ.tags.join('/')) : null,
+                  onTap: () => onSelected(champ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+      optionsMaxHeight: 220,
+    );
   }
 
   @override
@@ -115,6 +294,96 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     )
                   : const Icon(Icons.save),
               label: Text(_saving ? 'Saving...' : 'Save'),
+            ),
+            const SizedBox(height: 32),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Favorite champions', style: Theme.of(context).textTheme.titleLarge),
+                if (_loadingProfile)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            FutureBuilder<List<Champion>>(
+              future: _championsFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: LinearProgressIndicator(),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text('Failed to load champions: ${snapshot.error}'),
+                  );
+                }
+                final champions = snapshot.data ?? [];
+                if (champions.isEmpty) {
+                  return const Text('No champions found.');
+                }
+                return Column(
+                  children: [
+                    ..._roleOrder.map(
+                      (role) {
+                        final selections = _favoriteChampions[role] ?? [];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: selections
+                                    .map(
+                                      (id) => _championForId(champions, id),
+                                    )
+                                    .whereType<Champion>()
+                                    .map(
+                                      (champ) => Chip(
+                                        label: Text(champ.name),
+                                        deleteIcon: const Icon(Icons.close),
+                                        onDeleted: () => _removeFavorite(role, champ.id),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                              if (selections.length >= 3)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    'Maximum 3 favorites',
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                  ),
+                                ),
+                              _favoriteAutocomplete(role, champions),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    ElevatedButton.icon(
+                      onPressed: _favoritesSaving ? null : _saveFavorites,
+                      icon: _favoritesSaving
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.favorite),
+                      label: Text(_favoritesSaving ? 'Saving...' : 'Save favorites'),
+                    ),
+                  ],
+                );
+              },
             ),
           ],
         ),

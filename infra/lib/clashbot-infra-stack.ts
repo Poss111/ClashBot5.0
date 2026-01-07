@@ -203,6 +203,7 @@ export class ClashbotInfraStack extends Stack {
     const registrationsApiFn = createLambda('RegistrationsApiFn', 'registrationsApi.ts');
     const teamsApiFn = createLambda('TeamsApiFn', 'teamsApi.ts');
     const assignRoleFn = createLambda('AssignRoleFn', 'assignRole.ts');
+    const draftApiFn = createLambda('DraftApiFn', 'draftApi.ts');
     const usersApiFn = createLambda('UsersApiFn', 'usersApi.ts');
     const authBrokerFn = createLambda('AuthBrokerFn', 'authBroker.ts');
     const authValidatorFn = createLambda('AuthValidatorFn', 'authValidator.ts');
@@ -337,6 +338,7 @@ export class ClashbotInfraStack extends Stack {
       registrationsApiFn,
       teamsApiFn,
       assignRoleFn,
+      draftApiFn,
       usersApiFn,
       authBrokerFn,
       registerTournamentFn,
@@ -388,6 +390,9 @@ export class ClashbotInfraStack extends Stack {
     teamsResource.addMethod('POST', new apigw.LambdaIntegration(teamsApiFn), { authorizer });
     const teamIdResource = teamsResource.addResource('{teamId}');
     teamIdResource.addMethod('DELETE', new apigw.LambdaIntegration(teamsApiFn), { authorizer });
+    const draftResource = teamIdResource.addResource('draft');
+    draftResource.addMethod('GET', new apigw.LambdaIntegration(draftApiFn), { authorizer });
+    draftResource.addMethod('PUT', new apigw.LambdaIntegration(draftApiFn), { authorizer });
     const rolesResource = teamIdResource.addResource('roles');
     const roleResource = rolesResource.addResource('{role}');
     roleResource.addMethod('POST', new apigw.LambdaIntegration(assignRoleFn), { authorizer });
@@ -403,6 +408,9 @@ export class ClashbotInfraStack extends Stack {
     meResource.addMethod('GET', new apigw.LambdaIntegration(usersApiFn), { authorizer });
     meResource
       .addResource('display-name')
+      .addMethod('PUT', new apigw.LambdaIntegration(usersApiFn), { authorizer });
+    meResource
+      .addResource('favorite-champions')
       .addMethod('PUT', new apigw.LambdaIntegration(usersApiFn), { authorizer });
 
     // WebSocket API
@@ -637,16 +645,6 @@ function handler(event) {
       period: Duration.minutes(5)
     });
 
-    const throttleExpression = new cw.MathExpression({
-      expression: apiLambdaFns.map((_, idx) => `m${idx}`).join(' + ') || '0',
-      usingMetrics: apiLambdaFns.reduce<Record<string, cw.IMetric>>((acc, fn, idx) => {
-        acc[`m${idx}`] = fn.metricThrottles({ period: Duration.minutes(5), statistic: 'Sum' });
-        return acc;
-      }, {}),
-      label: 'Lambda throttles (sum)',
-      period: Duration.minutes(5)
-    });
-
     new cw.Alarm(this, 'ApiErrorRateHigh', {
       metric: errorRateExpr,
       threshold: 2,
@@ -665,14 +663,45 @@ function handler(event) {
       alarmDescription: 'API p99 latency above 1.5s'
     });
 
-    new cw.Alarm(this, 'ApiThrottlesDetected', {
-      metric: throttleExpression,
-      threshold: 0,
-      evaluationPeriods: 1,
-      datapointsToAlarm: 1,
-      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
-      alarmDescription: 'Lambda throttles detected across API handlers'
-    });
+    // Throttle alarms (math expressions support up to 10 metrics). Split into two groups to stay within limits.
+    const throttleMetrics = apiLambdaFns.map((fn) =>
+      fn.metricThrottles({ period: Duration.minutes(5), statistic: 'Sum' })
+    );
+    const throttleGroupA = throttleMetrics.slice(0, 10);
+    const throttleGroupB = throttleMetrics.slice(10);
+
+    if (throttleGroupA.length > 0) {
+      const expr = new cw.MathExpression({
+        expression: throttleGroupA.map((_, idx) => `m${idx}`).join(' + ') || '0',
+        usingMetrics: throttleGroupA.reduce<Record<string, cw.IMetric>>((acc, metric, idx) => {
+          acc[`m${idx}`] = metric;
+          return acc;
+        }, {}),
+        label: 'Lambda throttles (group A)',
+        period: Duration.minutes(5)
+      });
+      new cw.Alarm(this, 'ApiThrottlesDetectedA', {
+        metric: expr,
+        threshold: 0,
+        evaluationPeriods: 1,
+        datapointsToAlarm: 1,
+        comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        alarmDescription: 'Lambda throttles detected across API handlers (group A)'
+      });
+    }
+
+    if (throttleGroupB.length > 0) {
+      throttleGroupB.forEach((metric, idx) => {
+        new cw.Alarm(this, `ApiThrottlesDetectedB${idx}`, {
+          metric,
+          threshold: 0,
+          evaluationPeriods: 1,
+          datapointsToAlarm: 1,
+          comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+          alarmDescription: 'Lambda throttles detected across API handlers (group B)'
+        });
+      });
+    }
 
     new cw.Alarm(this, 'WorkflowFailure', {
       metric: assignmentStateMachine.metricFailed({ period: Duration.minutes(5) }),

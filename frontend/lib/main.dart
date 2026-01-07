@@ -11,6 +11,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'screens/home_screen.dart';
 import 'screens/tournaments_list_screen.dart';
 import 'screens/teams_screen.dart';
+import 'screens/team_draft_screen.dart';
 import 'screens/admin_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/auth_service.dart';
@@ -91,7 +92,9 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
             onShowEvents: () => _showEvents(context),
             child: HomeScreen(
               effectiveRole: _effectiveRole ?? _userRole,
-            navEnabled: true,
+              userId: _userId,
+              userDisplayName: _userName,
+              navEnabled: true,
             ),
           ),
         ),
@@ -143,6 +146,48 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
                 ? const _UnauthorizedScreen(message: 'Sign-in required')
                 : TeamsScreen(userEmail: _userId, userDisplayName: _userName),
           ),
+        ),
+        GoRoute(
+          path: '/teams/:tournamentId/:teamId/draft',
+          builder: (context, state) {
+            final params = state.pathParameters;
+            final tournamentId = params['tournamentId'] ?? '';
+            final teamId = params['teamId'] ?? '';
+            String? teamName;
+            String? tournamentLabel;
+            final extra = state.extra;
+            if (extra is Map) {
+              teamName = extra['teamName'] as String?;
+              tournamentLabel = extra['tournamentLabel'] as String?;
+            }
+            return _AppScaffold(
+              isDarkMode: _isDarkMode,
+              onToggleTheme: _toggleTheme,
+              onSignIn: _signIn,
+              onSignOut: _signOut,
+              userEmail: _userEmail,
+              userName: _userName,
+              userAvatar: _userAvatar,
+              userRole: _userRole,
+              effectiveRole: _effectiveRole ?? _userRole,
+              onRoleChange: _setEffectiveRole,
+              authLoading: _authLoading,
+              authFailed: _authFailed,
+              isHome: false,
+              events: _events,
+              unreadEvents: _unreadEvents,
+              appVersion: _appVersion,
+              onShowEvents: () => _showEvents(context),
+              child: _authFailed
+                  ? const _UnauthorizedScreen(message: 'Sign-in required')
+                  : TeamDraftScreen(
+                      tournamentId: tournamentId,
+                      teamId: teamId,
+                      teamName: teamName,
+                      tournamentLabel: tournamentLabel,
+                    ),
+            );
+          },
         ),
         GoRoute(
           path: '/settings',

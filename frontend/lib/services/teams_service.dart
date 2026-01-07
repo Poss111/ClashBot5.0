@@ -14,6 +14,7 @@ class Team {
   final String? createdByDisplayName;
   Map<String, String>? members;
   Map<String, String>? memberDisplayNames;
+  Map<String, String>? memberStatuses;
   final String? status;
   final String? createdAt;
 
@@ -28,6 +29,7 @@ class Team {
     this.members,
     this.status,
     this.memberDisplayNames,
+    this.memberStatuses,
     this.createdAt,
   });
 
@@ -42,6 +44,8 @@ class Team {
         members: (json['members'] as Map<String, dynamic>?)
             ?.map((key, value) => MapEntry(key, value?.toString() ?? '')),
         memberDisplayNames: (json['memberDisplayNames'] as Map<String, dynamic>?)
+            ?.map((key, value) => MapEntry(key, value?.toString() ?? '')),
+        memberStatuses: (json['memberStatuses'] as Map<String, dynamic>?)
             ?.map((key, value) => MapEntry(key, value?.toString() ?? '')),
         status: json['status'] as String?,
         createdAt: json['createdAt'] as String?,
@@ -163,14 +167,19 @@ class TeamsService {
     }
   }
 
-  Future<void> assignRole(String tournamentId, String teamId, String role, String playerId) async {
+  Future<void> assignRole(String tournamentId, String teamId, String role, String playerId,
+      {String? status}) async {
     final route = 'POST /tournaments/$tournamentId/teams/$teamId/roles/$role';
     final url = '$baseUrl/tournaments/$tournamentId/teams/$teamId/roles/$role';
+    final payload = {
+      'playerId': playerId,
+      if (status != null) 'status': status,
+    };
     try {
       final resp = await http.post(
         Uri.parse(url),
         headers: _headers(),
-        body: json.encode({'playerId': playerId}),
+        body: json.encode(payload),
       );
       if (resp.statusCode != 200 && resp.statusCode != 201) {
         EventRecorder.record(
@@ -179,7 +188,7 @@ class TeamsService {
           statusCode: resp.statusCode,
           endpoint: route,
           url: url,
-          requestBody: {'playerId': playerId},
+          requestBody: payload,
           responseBody: resp.body,
         );
         throw Exception('Failed to assign role: ${resp.statusCode} ${resp.body}');
@@ -190,7 +199,7 @@ class TeamsService {
         statusCode: resp.statusCode,
         endpoint: route,
         url: url,
-        requestBody: {'playerId': playerId},
+        requestBody: payload,
         responseBody: resp.body,
       );
     } catch (e) {
@@ -227,6 +236,11 @@ class TeamsService {
       EventRecorder.record(type: 'api.error', message: e.toString(), endpoint: route, url: url, statusCode: -1);
       rethrow;
     }
+  }
+
+  Future<void> updateMemberStatus(
+      String tournamentId, String teamId, String role, String playerId, String status) {
+    return assignRole(tournamentId, teamId, role, playerId, status: status);
   }
 }
 

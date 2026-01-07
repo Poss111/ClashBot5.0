@@ -579,6 +579,20 @@ function handler(event) {
       period: Duration.minutes(5),
       dimensionsMap: baseDimensions
     });
+    const teamJoins = new cw.Metric({
+      namespace: 'ClashOps',
+      metricName: 'TeamJoins',
+      statistic: 'Sum',
+      period: Duration.minutes(5),
+      dimensionsMap: baseDimensions
+    });
+    const teamLeaves = new cw.Metric({
+      namespace: 'ClashOps',
+      metricName: 'TeamLeaves',
+      statistic: 'Sum',
+      period: Duration.minutes(5),
+      dimensionsMap: baseDimensions
+    });
     const apiErrors = new cw.Metric({
       namespace: 'ClashOps',
       metricName: 'Errors',
@@ -718,6 +732,13 @@ function handler(event) {
       new cw.GraphWidget({
         title: 'Feature Invocations',
         left: [featureInvocations],
+        legendPosition: cw.LegendPosition.BOTTOM,
+        width: 12
+      }),
+      new cw.GraphWidget({
+        title: 'Team Joins vs Leaves',
+        left: [teamJoins.with({ label: 'Joins' })],
+        right: [teamLeaves.with({ label: 'Leaves' })],
         legendPosition: cw.LegendPosition.BOTTOM,
         width: 12
       }),

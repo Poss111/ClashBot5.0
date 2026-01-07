@@ -86,7 +86,8 @@ const baseHandler = async (event: any) => {
         ...t,
         captainDisplayName: nameMap[t.captainSummoner] ?? maskIdentifier(t.captainSummoner),
         createdByDisplayName: nameMap[t.createdBy] ?? maskIdentifier(t.createdBy),
-        memberDisplayNames
+        memberDisplayNames,
+        memberStatuses: t.memberStatuses ?? {}
       };
     });
 
@@ -144,6 +145,9 @@ const baseHandler = async (event: any) => {
       createdBy: user,
       createdAt: new Date().toISOString(),
       members,
+      memberStatuses: {
+        [role]: 'all_in'
+      },
       status: body?.status ?? 'open'
     };
 

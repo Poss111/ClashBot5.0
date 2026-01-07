@@ -18,6 +18,7 @@ export interface Team {
   createdAt?: string;
   members?: Record<string, string>;
   memberDisplayNames?: Record<string, string>;
+  memberStatuses?: Record<string, 'maybe' | 'all_in'>;
   status?: 'open' | 'locked';
 }
 

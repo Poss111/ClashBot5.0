@@ -41,42 +41,27 @@ android {
     }
     signingConfigs {
         create("debug-key") {
-            if (System.getenv()["CI"].toBoolean()) { // CI=true is exported by Codemagic
-                storeFile = file(System.getenv()["CM_KEYSTORE_PATH"])
-                storePassword = System.getenv()["CM_KEYSTORE_PASSWORD"]
-                keyAlias = System.getenv()["CM_KEY_ALIAS"]
-                keyPassword = System.getenv()["CM_KEY_PASSWORD"]
-            } else {
-                val keystoreProperties = Properties()
-                val keystorePropertiesFile = rootProject.file("debug-key.properties")
-                if (keystorePropertiesFile.exists()) {
-                    keystoreProperties.load(keystorePropertiesFile.inputStream())
-                }
-                println("Store file: ${keystoreProperties["storeFile"]}")
-                storeFile = keystoreProperties["storeFile"]?.let { file(it) }
-                storePassword = keystoreProperties["storePassword"] as String
-                keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
+            val keystoreProperties = Properties()
+            val keystorePropertiesFile = rootProject.file("debug-key.properties")
+            if (keystorePropertiesFile.exists()) {
+                keystoreProperties.load(keystorePropertiesFile.inputStream())
             }
+            println("Store file: ${keystoreProperties["storeFile"]}")
+            storeFile = keystoreProperties["storeFile"]?.let { file(it) }
+            storePassword = keystoreProperties["storePassword"] as String
+            keyAlias = keystoreProperties["keyAlias"] as String
         }
         create("release") {
-            if (System.getenv()["CI"].toBoolean()) { // CI=true is exported by Codemagic
-                storeFile = file(System.getenv()["CM_KEYSTORE_PATH"])
-                storePassword = System.getenv()["CM_KEYSTORE_PASSWORD"]
-                keyAlias = System.getenv()["CM_KEY_ALIAS"]
-                keyPassword = System.getenv()["CM_KEY_PASSWORD"]
-            } else {
-                val keystoreProperties = Properties()
-                val keystorePropertiesFile = rootProject.file("key.properties")
-                if (keystorePropertiesFile.exists()) {
-                    keystoreProperties.load(keystorePropertiesFile.inputStream())
-                }
-                println("Store file: ${keystoreProperties["storeFile"]}")
-                storeFile = keystoreProperties["storeFile"]?.let { file(it) }
-                storePassword = keystoreProperties["storePassword"] as String
-                keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
+            val keystoreProperties = Properties()
+            val keystorePropertiesFile = rootProject.file("key.properties")
+            if (keystorePropertiesFile.exists()) {
+                keystoreProperties.load(keystorePropertiesFile.inputStream())
             }
+            println("Store file: ${keystoreProperties["storeFile"]}")
+            storeFile = keystoreProperties["storeFile"]?.let { file(it) }
+            storePassword = keystoreProperties["storePassword"] as String
+            keyAlias = keystoreProperties["keyAlias"] as String
+            keyPassword = keystoreProperties["keyPassword"] as String
         }
     }
     buildTypes {

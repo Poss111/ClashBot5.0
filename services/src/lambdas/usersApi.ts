@@ -14,6 +14,7 @@ type UserRecord = {
   provider?: string;
   createdAt?: string;
   lastLogin?: string;
+  favoriteChampions?: Record<string, string[]>;
 };
 
 const USERS_TABLE = process.env.USERS_TABLE;
@@ -42,6 +43,50 @@ const baseHandler = async (event: any) => {
     return jsonResponse(401, { message: 'Unauthorized' });
   }
 
+  const normalizeRole = (value: string | undefined): string | null => {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const lower = trimmed.toLowerCase();
+    const allowed = new Set(['top', 'jungle', 'mid', 'bot', 'support']);
+    if (!allowed.has(lower)) return null;
+    return lower[0].toUpperCase() + lower.substring(1);
+  };
+
+  const sanitizeFavoriteChampions = (value: any): Record<string, string[]> | null => {
+    if (value == null || typeof value !== 'object') return null;
+    const result: Record<string, string[]> = {};
+    for (const [role, champ] of Object.entries(value)) {
+      const normalizedRole = normalizeRole(role);
+      if (!normalizedRole) continue;
+      const values: string[] = Array.isArray(champ)
+        ? (champ as any[]).map((c) => `${c ?? ''}`.trim()).filter((c) => c.length > 0)
+        : typeof champ === 'string'
+            ? [`${champ}`.trim()]
+            : [];
+      const unique = Array.from(new Set(values)).slice(0, 3);
+      if (unique.length > 0) {
+        result[normalizedRole] = unique;
+      }
+    }
+    return result;
+  };
+
+  const coerceFavoriteChampions = (value: any): Record<string, string[]> | null => {
+    if (value == null || typeof value !== 'object') return null;
+    const result: Record<string, string[]> = {};
+    for (const [role, champ] of Object.entries(value)) {
+      const normalizedRole = normalizeRole(role);
+      if (!normalizedRole) continue;
+      const arr = Array.isArray(champ) ? champ : [champ];
+      const cleaned = arr.map((c) => `${c ?? ''}`.trim()).filter((c) => c.length > 0);
+      if (cleaned.length > 0) {
+        result[normalizedRole] = Array.from(new Set(cleaned)).slice(0, 3);
+      }
+    }
+    return Object.keys(result).length === 0 ? null : result;
+  };
+
   try {
     // GET /users/me
     if (method === 'GET') {
@@ -52,6 +97,7 @@ const baseHandler = async (event: any) => {
         })
       );
       const item = (existing.Item as UserRecord | undefined) ?? { userId };
+    const favoriteChampions = coerceFavoriteChampions(item.favoriteChampions) ?? item.favoriteChampions ?? null;
       const response = {
         userId: item.userId,
         email: item.email ?? item.userId,
@@ -59,6 +105,7 @@ const baseHandler = async (event: any) => {
         name: item.name ?? null,
         picture: item.picture ?? null,
         role: item.role ?? null,
+      favoriteChampions,
         createdAt: item.createdAt ?? null,
         lastLogin: item.lastLogin ?? null
       };
@@ -98,6 +145,7 @@ const baseHandler = async (event: any) => {
       );
 
       logInfo('usersApi.displayNameUpdated', { userId });
+      const favoriteChampions = coerceFavoriteChampions(item.favoriteChampions) ?? item.favoriteChampions ?? null;
       return jsonResponse(200, {
         userId,
         email: item.email ?? userId,
@@ -105,6 +153,52 @@ const baseHandler = async (event: any) => {
         name: item.name ?? null,
         picture: item.picture ?? null,
         role: item.role ?? null,
+        favoriteChampions,
+        createdAt: item.createdAt ?? nowIso,
+        lastLogin: item.lastLogin ?? nowIso
+      });
+    }
+
+    // PUT /users/me/favorite-champions
+    if (method === 'PUT' && path.includes('/favorite-champions')) {
+      const body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+      const desired = sanitizeFavoriteChampions(body?.favoriteChampions ?? body);
+      if (!desired || Object.keys(desired).length === 0) {
+        return jsonResponse(400, { message: 'favoriteChampions must include at least one valid role/champion' });
+      }
+
+      const existing = await docClient.send(
+        new GetCommand({
+          TableName: USERS_TABLE,
+          Key: { userId }
+        })
+      );
+      const item = (existing.Item as UserRecord | undefined) ?? { userId };
+      const nowIso = new Date().toISOString();
+
+      await docClient.send(
+        new PutCommand({
+          TableName: USERS_TABLE,
+          Item: {
+            ...item,
+            userId,
+            email: item.email ?? item.userId,
+            favoriteChampions: desired,
+            lastLogin: item.lastLogin ?? nowIso,
+            createdAt: item.createdAt ?? nowIso
+          }
+        })
+      );
+
+      logInfo('usersApi.favoriteChampionsUpdated', { userId, roles: Object.keys(desired) });
+      return jsonResponse(200, {
+        userId,
+        email: item.email ?? userId,
+        displayName: item.displayName ?? item.name ?? null,
+        name: item.name ?? null,
+        picture: item.picture ?? null,
+        role: item.role ?? null,
+        favoriteChampions: desired,
         createdAt: item.createdAt ?? nowIso,
         lastLogin: item.lastLogin ?? nowIso
       });
@@ -119,7 +213,14 @@ const baseHandler = async (event: any) => {
 
 export const handler = withApiMetrics({
   defaultRoute: '/users/me',
-  feature: (event) => ((event as any)?.httpMethod === 'GET' ? 'user.me' : 'user.displayName')
+  feature: (event) => {
+    const method = (event as any)?.httpMethod;
+    const path: string = (event as any)?.path || (event as any)?.resource || '';
+    if (method === 'GET') return 'user.me';
+    if (method === 'PUT' && path.includes('/display-name')) return 'user.displayName';
+    if (method === 'PUT' && path.includes('/favorite-champions')) return 'user.favoriteChampions';
+    return undefined;
+  }
 })(baseHandler);
 
 

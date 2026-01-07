@@ -1,0 +1,100 @@
+name: Publish Android to Google Play
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: "3.27.0"
+  JAVA_VERSION: "17"
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+  ANDROID_DEBUG_KEYSTORE_PATH: android/app/debug-keystore.jks
+  ANDROID_RELEASE_KEYSTORE_PATH: android/app/release-keystore.jks
+  PACKAGE_NAME: com.poss.clash.companion
+
+jobs:
+  play-publish:
+    name: Build & Upload to Play
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Ensure Android SDK in PATH
+        run: |
+          echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "${ANDROID_SDK_ROOT}/platform-tools" >> $GITHUB_PATH
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2.9.1
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Provision keystores
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD }}
+          DEBUG_KEY_PASSWORD: ${{ secrets.DEBUG_KEY_PASSWORD }}
+          DEBUG_KEY_ALIAS: ${{ secrets.DEBUG_KEY_ALIAS }}
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          mkdir -p android/app
+          echo "$DEBUG_KEYSTORE_B64" | base64 -d > "$ANDROID_DEBUG_KEYSTORE_PATH"
+          echo "$RELEASE_KEYSTORE_B64" | base64 -d > "$ANDROID_RELEASE_KEYSTORE_PATH"
+
+          cat > android/debug-key.properties <<EOF
+          storePassword=${DEBUG_KEYSTORE_PASSWORD}
+          keyPassword=${DEBUG_KEY_PASSWORD}
+          keyAlias=${DEBUG_KEY_ALIAS}
+          storeFile=${ANDROID_DEBUG_KEYSTORE_PATH}
+          EOF
+
+          cat > android/key.properties <<EOF
+          storePassword=${RELEASE_KEYSTORE_PASSWORD}
+          keyPassword=${RELEASE_KEY_PASSWORD}
+          keyAlias=${RELEASE_KEY_ALIAS}
+          storeFile=${ANDROID_RELEASE_KEYSTORE_PATH}
+          EOF
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build app bundle (release)
+        run: flutter build appbundle --release --dart-define=APP_ENV=prod
+
+      - name: Verify AAB exists
+        run: |
+          if [ ! -f build/app/outputs/bundle/release/app-release.aab ]; then
+            echo "app-release.aab not found"
+            exit 1
+          fi
+
+      - name: Upload to Google Play (internal track)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ env.PACKAGE_NAME }}
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed
+          releaseName: ${{ github.event.release.name || github.ref_name }}
+

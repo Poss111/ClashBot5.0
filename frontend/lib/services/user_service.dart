@@ -82,6 +82,41 @@ class UserService {
       rethrow;
     }
   }
+
+  Future<UserProfile> setFavoriteChampions(Map<String, List<String>> favorites) async {
+    const route = 'PUT /users/me/favorite-champions';
+    final url = '$baseUrl/users/me/favorite-champions';
+    final payload = {'favoriteChampions': favorites};
+    try {
+      final resp = await http.put(Uri.parse(url), headers: _headers(), body: json.encode(payload));
+      if (resp.statusCode != 200) {
+        EventRecorder.record(
+          type: 'api.error',
+          message: 'Failed to set favorite champions',
+          statusCode: resp.statusCode,
+          endpoint: route,
+          url: url,
+          requestBody: payload,
+          responseBody: resp.body,
+        );
+        throw Exception('Failed to set favorite champions: ${resp.statusCode}');
+      }
+      final data = json.decode(resp.body) as Map<String, dynamic>;
+      EventRecorder.record(
+        type: 'api.call',
+        message: 'Updated favorite champions',
+        statusCode: resp.statusCode,
+        endpoint: route,
+        url: url,
+        requestBody: payload,
+        responseBody: resp.body,
+      );
+      return UserProfile.fromJson(data);
+    } catch (e) {
+      EventRecorder.record(type: 'api.error', message: e.toString(), endpoint: route, url: url, statusCode: -1);
+      rethrow;
+    }
+  }
 }
 
 

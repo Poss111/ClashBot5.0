@@ -2,6 +2,7 @@ import 'package:carousel_slider/carousel_slider.dart';
 import 'package:clash_companion/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:go_router/go_router.dart';
 import '../models/tournament.dart';
 import '../services/tournaments_service.dart';
 import '../services/teams_service.dart';
@@ -679,6 +680,13 @@ class _TeamsScreenState extends State<TeamsScreen> {
                                     statusBorder: _statusBorder,
                                     statusText: _statusText,
                                     roleIcon: _roleIcon,
+                                    onDeepDive: () => context.go(
+                                      '/teams/${t.tournamentId}/${team.teamId}/draft',
+                                      extra: {
+                                        'teamName': team.displayName ?? team.teamId,
+                                        'tournamentLabel': _tournamentLabel(t),
+                                      },
+                                    ),
                                   );
                                 }).toList();
                           final isMobileViewport = MediaQuery.of(context).size.width < 720;
@@ -786,7 +794,7 @@ class _TeamCard extends StatelessWidget {
     required this.statusBorder,
     required this.statusText,
     required this.roleIcon,
-    super.key,
+    required this.onDeepDive,
   });
 
   final Tournament tournament;
@@ -820,6 +828,7 @@ class _TeamCard extends StatelessWidget {
   final Color Function(String? status) statusBorder;
   final Color Function(String? status) statusText;
   final IconData? Function(String role) roleIcon;
+  final VoidCallback onDeepDive;
 
   @override
   Widget build(BuildContext context) {
@@ -917,18 +926,29 @@ class _TeamCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: onDeepDive,
+                    icon: const Icon(Icons.analytics_outlined),
+                    label: const Text('Draft deep dive'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
               ...roleOrder.map((role) {
-                final existing = members[role];
+                final existing = members[role] ?? 'Open';
                 final icon = roleIcon(role);
                 final isBusy = busyTeamId == team.teamId && busyRole == role;
                 final teamBusy = busyTeamId == team.teamId && busyRole != role;
                 final hasError = roleErrors.contains('${team.teamId}:$role');
                 final isKicking = kickingKey == '${team.teamId}:$role';
-                final isSelf = existing != null && existing == currentUserId;
-                final userOnAnotherRoleSameTeam = userInThisTeam && (existing == null || existing != currentUserId);
+                final isSelf = existing == currentUserId;
+                final userOnAnotherRoleSameTeam = userInThisTeam && existing != currentUserId;
                 final memberLabelText = memberLabel(team, role);
-                final status = existing == null || existing == 'Open' ? null : memberStatuses[role] ?? 'all_in';
-                final isOpenSlot = existing == null || existing == 'Open';
+                final status = existing == 'Open' ? null : memberStatuses[role] ?? 'all_in';
+                final isOpenSlot = existing == 'Open';
                 final statusUpdating = statusUpdatingKey == '${team.teamId}:$role';
                 final tileColor = isOpenSlot ? null : statusBackground(status);
                 final borderColor = isOpenSlot ? Theme.of(context).dividerColor : statusBorder(status);
@@ -997,7 +1017,7 @@ class _TeamCard extends StatelessWidget {
                                   ),
                         trailing: showCompact
                             ? null
-                            : existing == null || existing == 'Open'
+                            : existing == 'Open'
                                 ? hasError
                                     ? const Text(
                                         'Error',
@@ -1072,7 +1092,7 @@ class _TeamCard extends StatelessWidget {
                                                   ),
                                                 ),
                                         ),
-                                      if (isCaptain && !isSelf && existing != null)
+                                      if (isCaptain && !isSelf && existing != 'Open')
                                         IconButton(
                                           tooltip: 'Remove player',
                                           onPressed: isKicking ? null : () => onKick(role, existing),

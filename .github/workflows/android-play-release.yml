@@ -11,8 +11,8 @@ env:
   FLUTTER_VERSION: "3.27.0"
   JAVA_VERSION: "17"
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-  ANDROID_DEBUG_KEYSTORE_PATH: android/app/debug-keystore.jks
-  ANDROID_RELEASE_KEYSTORE_PATH: android/app/release-keystore.jks
+  ANDROID_DEBUG_KEYSTORE_PATH: debug-keystore.jks
+  ANDROID_RELEASE_KEYSTORE_PATH: release-keystore.jks
   PACKAGE_NAME: com.poss.clash.companion
 
 jobs:

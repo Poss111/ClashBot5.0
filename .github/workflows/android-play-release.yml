@@ -105,7 +105,7 @@ jobs:
             "build-tools;${{ env.ANDROID_VERSION }}.0.0"
 
       - name: Build app bundle (release)
-        run: flutter build appbundle --verbose --release --dart-define=APP_ENV=prod --dart-define=CLOUDFRONT_ORIGIN=${{ secrets.BACKEND_URL}} --dart-define=CLOUDFRONT_WS_ORIGIN=${{ secrets.WS_BACKEND_URL}}
+        run: flutter build appbundle --verbose --release --dart-define=APP_ENV=prod --dart-define=CLOUDFRONT_ORIGIN=${{ secrets.BACKEND_URL}} --dart-define=CLOUDFRONT_WS_ORIGIN=${{ secrets.WS_BACKEND_URL}} --build-name=${{ github.event.release.name || github.ref_name }} --build-number=${{ github.run_number }}
 
       - name: Verify AAB exists
         run: |

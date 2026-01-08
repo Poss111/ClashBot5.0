@@ -97,7 +97,13 @@ jobs:
         run: flutter pub get
 
       - name: Build app bundle (release)
-        run: ./scripts/build_release.sh --android-only --env prod --cf-origin "${{ secrets.BACKEND_URL }}" --cf-ws-origin "${{ secrets.WS_BACKEND_URL }}"
+        run: |
+          ./scripts/build_release.sh --android-only \
+            --env prod \
+            --cf-origin "${{ secrets.BACKEND_URL }}" \
+            --cf-ws-origin "${{ secrets.WS_BACKEND_URL }}" \
+            --build-name "${{ github.event.release.name || github.ref_name }}" \
+            --build-number "${{ github.run_number }}"
 
       - name: Verify AAB exists
         run: |

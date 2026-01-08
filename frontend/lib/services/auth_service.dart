@@ -3,7 +3,22 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_broker_service.dart';
+import 'event_recorder.dart';
 import 'logger.dart';
+
+class SignInFailure implements Exception {
+  final String stage; // e.g., google_sign_in, google_tokens, backend_exchange
+  final String message;
+  final Object? cause;
+
+  SignInFailure({required this.stage, required this.message, this.cause});
+
+  @override
+  String toString() {
+    final suffix = cause != null ? ' ($cause)' : '';
+    return 'SignInFailure($stage): $message$suffix';
+  }
+}
 
 class AuthService {
   AuthService._internal();
@@ -99,7 +114,16 @@ class AuthService {
         currentUser = await client.signIn();
       } catch (e) {
         logDebug("Error signing in interactively: $e");
-        rethrow;
+        EventRecorder.record(
+          type: 'auth.error',
+          message: 'Google interactive sign-in failed',
+          data: {
+            'stage': 'google_sign_in',
+            'interactive': interactive,
+            'error': e.toString(),
+          },
+        );
+        throw SignInFailure(stage: 'google_sign_in', message: 'Google sign-in failed', cause: e);
       }
       logDebug("Signed in interactively: ${currentUser?.displayName}");
     }
@@ -120,14 +144,50 @@ class AuthService {
         logDebug("We have a token to use");
         final broker = AuthBrokerService();
         logDebug("Exchanging token: $tokenToUse");
-        final result = await broker.exchange(idToken: idToken, accessToken: tokenToUse);
-        logDebug("Exchange result: $result");
-        backendToken = result.token;
-        backendRole = result.role;
-        logDebug("Backend token: $backendToken");
-        logDebug("Backend role: $backendRole");
-        await _persistBackendSession();
-        logDebug("Persisted backend session");
+        try {
+          final result = await broker.exchange(idToken: idToken, accessToken: tokenToUse);
+          logDebug("Exchange result: $result");
+          backendToken = result.token;
+          backendRole = result.role;
+          logDebug("Backend token: $backendToken");
+          logDebug("Backend role: $backendRole");
+          await _persistBackendSession();
+          logDebug("Persisted backend session");
+        } catch (e) {
+          EventRecorder.record(
+            type: 'auth.error',
+            message: 'Backend token exchange failed',
+            data: {
+              'stage': 'backend_exchange',
+              'interactive': interactive,
+              'hasIdToken': idToken != null,
+              'hasAccessToken': accessToken != null,
+              'googleUserEmail': currentUser?.email,
+              'error': e.toString(),
+            },
+          );
+          throw SignInFailure(
+            stage: 'backend_exchange',
+            message: 'Signed in with Google but backend token exchange failed',
+            cause: e,
+          );
+        }
+      } else {
+        EventRecorder.record(
+          type: 'auth.error',
+          message: 'Google sign-in returned no token',
+          data: {
+            'stage': 'google_tokens',
+            'interactive': interactive,
+            'hasIdToken': idToken != null,
+            'hasAccessToken': accessToken != null,
+            'googleUserEmail': currentUser?.email,
+          },
+        );
+        throw SignInFailure(
+          stage: 'google_tokens',
+          message: 'Google sign-in succeeded but returned no token',
+        );
       }
     } else if (!interactive && backendToken != null) {
       logDebug("Silent sign-in failed and we're relying only on a cached token, clearing it");

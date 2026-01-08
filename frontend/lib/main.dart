@@ -300,13 +300,14 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
         } else {
           _disposeWebSocket();
           if (interactive) {
-            await _showAuthError(context, 'Failed to sign in with Google. Please try again.');
+            await _showAuthError(context, 'Failed to sign in. Please try again.');
           }
         }
       }
     } catch (e) {
+      final message = _authErrorMessage(e);
       logDebug("Error signing in: $e");
-      await _showAuthError(context, 'Failed to sign in with Google. Please try again.');
+      await _showAuthError(context, message);
       if (mounted) {
         setState(() {
           _authFailed = true;
@@ -319,6 +320,22 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
         });
       }
     }
+  }
+
+  String _authErrorMessage(Object error) {
+    if (error is SignInFailure) {
+      switch (error.stage) {
+        case 'google_sign_in':
+          return 'Google sign-in failed. Please check your Google account or Play Services.';
+        case 'google_tokens':
+          return 'Signed in with Google but did not receive tokens. Please try again.';
+        case 'backend_exchange':
+          return 'Signed in with Google but could not reach the Clash servers. Please try again.';
+        default:
+          return error.message;
+      }
+    }
+    return 'Failed to sign in. Please try again.';
   }
 
   bool _needsDisplayName(UserProfile? profile) {
@@ -628,7 +645,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
       context: dialogContext,
       barrierDismissible: true,
       builder: (ctx) => AlertDialog(
-        title: const Text('Google Sign-in Failed'),
+        title: const Text('Sign-in Failed'),
         content: Text(message),
         actions: [
           TextButton(

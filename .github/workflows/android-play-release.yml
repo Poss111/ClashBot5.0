@@ -1,5 +1,9 @@
 name: Publish Android to Google Play
 
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   release:
     types: [published]
@@ -38,17 +42,27 @@ jobs:
             frontend/android/*.gradle*
             frontend/android/**/gradle-wrapper.properties
 
-      - name: Ensure Android SDK in PATH
-        run: |
-          echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "${ANDROID_SDK_ROOT}/platform-tools" >> $GITHUB_PATH
-
       - name: Set up Flutter
         uses: subosito/flutter-action@v2.9.1
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+
+      - name: Cache pub
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache/hosted
+          key: ${{ runner.os }}-pub-${{ hashFiles('frontend/pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-pub-
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          components: |
+            platform-tools
+            platforms;android-${{ env.ANDROID_VERSION }}
+            build-tools;${{ env.ANDROID_VERSION }}.0.0
 
       - name: Provision keystores
         env:
@@ -82,24 +96,8 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
-      - name: Cache android SDK
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.ANDROID_SDK_ROOT }}
-          key: ${{ runner.os }}-android-sdk-${{ env.ANDROID_SDK_ROOT }}
-          restore-keys: |
-            ${{ runner.os }}-android-sdk-${{ env.ANDROID_SDK_ROOT }}
-
-      - name: Install Android SDK components
-        run: |
-          yes | sdkmanager --licenses
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-${{ env.ANDROID_VERSION }}" \
-            "build-tools;${{ env.ANDROID_VERSION }}.0.0"
-
       - name: Build app bundle (release)
-        run: flutter build appbundle --release --dart-define=APP_ENV=prod --dart-define=CLOUDFRONT_ORIGIN=${{ secrets.BACKEND_URL}} --dart-define=CLOUDFRONT_WS_ORIGIN=${{ secrets.WS_BACKEND_URL}} --build-name=${{ github.event.release.name || github.ref_name }} --build-number=${{ github.run_number }}
+        run: ./scripts/build_release.sh --android-only --env prod --cf-origin "${{ secrets.BACKEND_URL }}" --cf-ws-origin "${{ secrets.WS_BACKEND_URL }}"
 
       - name: Verify AAB exists
         run: |
@@ -107,6 +105,12 @@ jobs:
             echo "app-release.aab not found"
             exit 1
           fi
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-aab
+          path: build/app/outputs/bundle/release/app-release.aab
 
       - name: Upload to Google Play (internal track)
         uses: r0adkll/upload-google-play@v1

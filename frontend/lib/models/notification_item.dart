@@ -20,6 +20,9 @@ abstract class AppNotification {
 
   static AppNotification fromMap(Map<String, dynamic> map) {
     final normalizedType = (map['type'] ?? 'event').toString();
+    if (normalizedType.startsWith('auth.')) {
+      return AuthNotification.fromMap(map);
+    }
     if (normalizedType.startsWith('api.')) {
       return ApiNotification.fromMap(map);
     }
@@ -87,6 +90,60 @@ class GeneralAnnouncementNotification extends AppNotification {
       timestamp: base.timestamp,
       data: base.data,
       raw: base.raw,
+    );
+  }
+
+  @override
+  String get title => message ?? type;
+}
+
+class AuthNotification extends AppNotification {
+  final String? stage;
+  final bool? interactive;
+  final bool? hasIdToken;
+  final bool? hasAccessToken;
+  final String? googleUserEmail;
+  final String? clientId;
+  final String? serverId;
+  final String? error;
+
+  AuthNotification({
+    required super.type,
+    super.message,
+    super.causedBy,
+    super.timestamp,
+    super.data,
+    required super.raw,
+    this.stage,
+    this.interactive,
+    this.hasIdToken,
+    this.hasAccessToken,
+    this.googleUserEmail,
+    this.clientId,
+    this.serverId,
+    this.error,
+  });
+
+  factory AuthNotification.fromMap(Map<String, dynamic> map) {
+    final base = _parseCommon(map);
+    final data = base.data ?? <String, dynamic>{};
+    String? _s(String key) => data[key]?.toString();
+    bool? _b(String key) => data[key] is bool ? data[key] as bool : null;
+    return AuthNotification(
+      type: base.type,
+      message: base.message,
+      causedBy: base.causedBy,
+      timestamp: base.timestamp,
+      data: base.data,
+      raw: base.raw,
+      stage: _s('stage'),
+      interactive: _b('interactive'),
+      hasIdToken: _b('hasIdToken'),
+      hasAccessToken: _b('hasAccessToken'),
+      googleUserEmail: _s('googleUserEmail'),
+      clientId: _s('clientId'),
+      serverId: _s('serverId'),
+      error: _s('error'),
     );
   }
 

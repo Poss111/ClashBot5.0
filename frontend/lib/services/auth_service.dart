@@ -37,6 +37,7 @@ class AuthService {
     },
     'prod': {
       'web': '443293502674-6sh7ss1lfkea74rhmctmjghpbraprddn.apps.googleusercontent.com',
+      // 'android': '870493288034-0br916cp2scpcuk4jk4aui03iibt7en0.apps.googleusercontent.com'
       'android': '870493288034-vfuevtj7u6mpgo5ce0ds8jug11rdqsmj.apps.googleusercontent.com'
     },
   };
@@ -45,11 +46,13 @@ class AuthService {
   GoogleSignInAccount? currentUser;
   String? backendToken;
   String? backendRole;
+  String _lastClientId = '';
+  String _lastServerId = '';
 
   GoogleSignIn _client() {
     // For Android/iOS, pass the web client ID as serverClientId; web uses the web client ID.
-    String clientId = '';
-    String serverId = '';
+    String? clientId = null;
+    String? serverId = null;
     if (kIsWeb) {
       try {
         clientId = _environmentsToClients[_env]!['web']!;
@@ -65,12 +68,21 @@ class AuthService {
         throw Exception('Error getting android server ID for environment $_env: $e');
       }
     }
+    _lastClientId = clientId ?? '';
+    _lastServerId = serverId ?? '';
     logDebug("Client ID: $clientId serverId: $serverId");
-    _googleSignIn ??= GoogleSignIn(
-      clientId: clientId,
-      serverClientId: serverId,
-      scopes: ['email', 'profile'],
-    );
+    final scopes = ['email', 'profile'];
+    if (kIsWeb) {
+      _googleSignIn ??= GoogleSignIn(
+        clientId: clientId,
+        scopes: scopes
+      );
+    } else {
+      _googleSignIn ??= GoogleSignIn(
+        serverClientId: serverId,
+        scopes: scopes
+      );
+    }
     return _googleSignIn!;
   }
 
@@ -121,6 +133,8 @@ class AuthService {
             'stage': 'google_sign_in',
             'interactive': interactive,
             'error': e.toString(),
+            'clientId': _lastClientId,
+            'serverId': _lastServerId,
           },
         );
         throw SignInFailure(stage: 'google_sign_in', message: 'Google sign-in failed', cause: e);
@@ -164,6 +178,8 @@ class AuthService {
               'hasAccessToken': accessToken != null,
               'googleUserEmail': currentUser?.email,
               'error': e.toString(),
+            'clientId': _lastClientId,
+            'serverId': _lastServerId,
             },
           );
           throw SignInFailure(
@@ -182,6 +198,8 @@ class AuthService {
             'hasIdToken': idToken != null,
             'hasAccessToken': accessToken != null,
             'googleUserEmail': currentUser?.email,
+            'clientId': _lastClientId,
+            'serverId': _lastServerId,
           },
         );
         throw SignInFailure(

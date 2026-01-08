@@ -28,6 +28,7 @@ enum NotificationType {
   apiCall,
   apiError,
   api,
+  auth,
   tournamentRegistered,
   general,
 }
@@ -37,6 +38,7 @@ class NotificationPresenter {
     NotificationType.apiCall: _buildApi,
     NotificationType.apiError: _buildApi,
     NotificationType.api: _buildApi,
+    NotificationType.auth: _buildAuth,
     NotificationType.tournamentRegistered: _buildTournamentRegistered,
     NotificationType.general: _defaultBuilder,
   };
@@ -59,6 +61,7 @@ class NotificationPresenter {
     if (key.startsWith('api.error')) return NotificationType.apiError;
     if (key.startsWith('api.call')) return NotificationType.apiCall;
     if (key.startsWith('api')) return NotificationType.api;
+    if (key.startsWith('auth')) return NotificationType.auth;
     if (key.contains('tournament.registered')) return NotificationType.tournamentRegistered;
     return NotificationType.general;
   }
@@ -85,6 +88,34 @@ class NotificationPresenter {
           : NotificationSeverity.success,
       timestamp: formattedTimestamp,
       causedBy: n.causedBy,
+    );
+  }
+
+  static NotificationDisplay _buildAuth(AppNotification n) {
+    final auth = n is AuthNotification ? n : AuthNotification.fromMap(n.raw);
+    final lines = <String>[];
+    if (auth.stage != null) lines.add('Stage: ${auth.stage}');
+    if (auth.interactive != null) lines.add('Interactive: ${auth.interactive}');
+    if (auth.googleUserEmail != null) lines.add('Google user: ${auth.googleUserEmail}');
+    if (auth.clientId != null) lines.add('Client ID: ${auth.clientId}');
+    if (auth.serverId != null) lines.add('Server ID: ${auth.serverId}');
+    if (auth.error != null) lines.add('Error: ${auth.error}');
+
+    String? formattedTimestamp;
+    final ts = n.timestamp;
+    if (ts != null) {
+      formattedTimestamp = AppDateFormats.formatLong(ts.toLocal());
+    }
+
+    final isError = n.type.toLowerCase().contains('error');
+
+    return NotificationDisplay(
+      title: auth.title,
+      subtitle: auth.message,
+      details: lines,
+      severity: isError ? NotificationSeverity.error : NotificationSeverity.info,
+      timestamp: formattedTimestamp,
+      causedBy: auth.causedBy,
     );
   }
 

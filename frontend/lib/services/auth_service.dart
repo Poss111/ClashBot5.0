@@ -13,11 +13,8 @@ class AuthService {
   static const _prefsRoleKey = 'auth_backend_role';
   static const _prefsMockKey = 'auth_backend_mock';
 
-  // Google OAuth client ID (web); used as serverClientId on mobile per google_sign_in_android guidance.
-  static const String _webClientId =
-      '443293502674-6sh7ss1lfkea74rhmctmjghpbraprddn.apps.googleusercontent.com';
-
   static const String _env = String.fromEnvironment('APP_ENV', defaultValue: 'prod');
+  // Google OAuth client ID (web); used as serverClientId on mobile per google_sign_in_android guidance.
   static const Map<String, Map<String, String>> _environmentsToClients = {
     'dev': {
       'web': '443293502674-6sh7ss1lfkea74rhmctmjghpbraprddn.apps.googleusercontent.com',
@@ -25,7 +22,7 @@ class AuthService {
     },
     'prod': {
       'web': '443293502674-6sh7ss1lfkea74rhmctmjghpbraprddn.apps.googleusercontent.com',
-      'android': '443293502674-sgqit513s5af7bfoj2augsbg3ig5bd6g.apps.googleusercontent.com'
+      'android': '870493288034-vfuevtj7u6mpgo5ce0ds8jug11rdqsmj.apps.googleusercontent.com'
     },
   };
 

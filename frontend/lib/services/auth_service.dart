@@ -1,3 +1,4 @@
+import 'package:clash_companion/services/api_config.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,6 +17,18 @@ class AuthService {
   static const String _webClientId =
       '443293502674-6sh7ss1lfkea74rhmctmjghpbraprddn.apps.googleusercontent.com';
 
+  static const String _env = String.fromEnvironment('APP_ENV', defaultValue: 'prod');
+  static const Map<String, Map<String, String>> _environmentsToClients = {
+    'dev': {
+      'web': '443293502674-6sh7ss1lfkea74rhmctmjghpbraprddn.apps.googleusercontent.com',
+      'android': '443293502674-tqvldv6fmtt70o5029nhcqs7hfadvf30.apps.googleusercontent.com'
+    },
+    'prod': {
+      'web': '443293502674-6sh7ss1lfkea74rhmctmjghpbraprddn.apps.googleusercontent.com',
+      'android': '443293502674-sgqit513s5af7bfoj2augsbg3ig5bd6g.apps.googleusercontent.com'
+    },
+  };
+
   GoogleSignIn? _googleSignIn;
   GoogleSignInAccount? currentUser;
   String? backendToken;
@@ -23,8 +36,23 @@ class AuthService {
 
   GoogleSignIn _client() {
     // For Android/iOS, pass the web client ID as serverClientId; web uses the web client ID.
-    final clientId = kIsWeb ? _webClientId : null;
-    final serverId = kIsWeb ? null : _webClientId;
+    String clientId = '';
+    String serverId = '';
+    if (kIsWeb) {
+      try {
+        clientId = _environmentsToClients[_env]!['web']!;
+      } catch (e) {
+        logDebug("Error getting web client ID: $e");
+        throw Exception('Error getting web client ID for environment $_env: $e');
+      }
+    } else {
+      try {
+        serverId = _environmentsToClients[_env]!['android']!;
+      } catch (e) {
+        logDebug("Error getting android server ID: $e");
+        throw Exception('Error getting android server ID for environment $_env: $e');
+      }
+    }
     logDebug("Client ID: $clientId serverId: $serverId");
     _googleSignIn ??= GoogleSignIn(
       clientId: clientId,

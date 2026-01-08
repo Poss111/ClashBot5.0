@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 env:
-  FLUTTER_VERSION: "3.28.5"
+  FLUTTER_VERSION: "3.38.5"
   JAVA_VERSION: "17"
   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
   ANDROID_DEBUG_KEYSTORE_PATH: debug-keystore.jks

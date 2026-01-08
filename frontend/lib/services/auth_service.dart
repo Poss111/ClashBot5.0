@@ -1,4 +1,3 @@
-import 'package:clash_companion/services/api_config.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -37,8 +36,9 @@ class AuthService {
     },
     'prod': {
       'web': '443293502674-6sh7ss1lfkea74rhmctmjghpbraprddn.apps.googleusercontent.com',
-      // 'android': '870493288034-0br916cp2scpcuk4jk4aui03iibt7en0.apps.googleusercontent.com'
-      'android': '870493288034-vfuevtj7u6mpgo5ce0ds8jug11rdqsmj.apps.googleusercontent.com'
+      // 'android': '870493288034-1j900o8ee8odcd80f7afa5qd38ujec7h.apps.googleusercontent.com'
+      'android': '870493288034-0br916cp2scpcuk4jk4aui03iibt7en0.apps.googleusercontent.com'
+      // 'android': '870493288034-vfuevtj7u6mpgo5ce0ds8jug11rdqsmj.apps.googleusercontent.com'
     },
   };
 
@@ -48,11 +48,12 @@ class AuthService {
   String? backendRole;
   String _lastClientId = '';
   String _lastServerId = '';
+  bool _googleInitialized = false;
 
-  GoogleSignIn _client() {
+  Future<GoogleSignIn> _client() async {
     // For Android/iOS, pass the web client ID as serverClientId; web uses the web client ID.
-    String? clientId = null;
-    String? serverId = null;
+    String clientId = '';
+    String serverId = '';
     if (kIsWeb) {
       try {
         clientId = _environmentsToClients[_env]!['web']!;
@@ -68,21 +69,17 @@ class AuthService {
         throw Exception('Error getting android server ID for environment $_env: $e');
       }
     }
-    _lastClientId = clientId ?? '';
-    _lastServerId = serverId ?? '';
-    logDebug("Client ID: $clientId serverId: $serverId");
-    final scopes = ['email', 'profile'];
-    if (kIsWeb) {
-      _googleSignIn ??= GoogleSignIn(
-        clientId: clientId,
-        scopes: scopes
+    _lastClientId = clientId;
+    _lastServerId = serverId;
+    if (!_googleInitialized) {
+      logDebug("Initializing GoogleSignIn. Client ID: $clientId serverId: $serverId");
+      await GoogleSignIn.instance.initialize(
+        clientId: clientId.isNotEmpty ? clientId : null,
+        serverClientId: serverId.isNotEmpty ? serverId : null,
       );
-    } else {
-      _googleSignIn ??= GoogleSignIn(
-        serverClientId: serverId,
-        scopes: scopes
-      );
+      _googleInitialized = true;
     }
+    _googleSignIn ??= GoogleSignIn.instance;
     return _googleSignIn!;
   }
 
@@ -104,12 +101,18 @@ class AuthService {
     final hasBackendSession = backendToken != null;
     logDebug("Has backend session: $hasBackendSession");
 
-    final client = _client();
+    final client = await _client();
+    final scopes = ['email', 'profile', 'openid'];
 
     // Always attempt silent sign-in to refresh profile if possible, but ignore errors.
     try {
-      currentUser = await client.signInSilently();
-      logDebug("Signed in silently: ${currentUser?.displayName}");
+      final maybeFuture = client.attemptLightweightAuthentication(reportAllExceptions: true);
+      if (maybeFuture != null) {
+        currentUser = await maybeFuture;
+        logDebug("Signed in silently: ${currentUser?.displayName}");
+      } else {
+        logDebug("Silent sign-in returned no future (platform-managed flow)");
+      }
     } catch (e) {
       logDebug("Error signing in silently: $e");
     }
@@ -123,7 +126,7 @@ class AuthService {
     if (currentUser == null && interactive) {
       logDebug("Signing in interactively");
       try {
-        currentUser = await client.signIn();
+        currentUser = await client.authenticate(scopeHint: scopes);
       } catch (e) {
         logDebug("Error signing in interactively: $e");
         EventRecorder.record(
@@ -145,14 +148,11 @@ class AuthService {
     logDebug("Current user: ${currentUser?.displayName}");
     if (currentUser != null) {
       logDebug("Current user is not null");
-      final auth = await currentUser!.authentication;
+      final auth = currentUser!.authentication;
       logDebug("Authentication: ${auth.idToken}");
       final idToken = auth.idToken;
       logDebug("ID Token: $idToken");
-      final accessToken = auth.accessToken;
-      logDebug("Access Token: $accessToken");
-      // Fallback: if neither present, try to get an auth code and treat as access token
-      final tokenToUse = idToken ?? accessToken ?? currentUser!.serverAuthCode;
+      final tokenToUse = idToken;
       logDebug("Trying to exchange token...");
       if (tokenToUse != null) {
         logDebug("We have a token to use");
@@ -175,7 +175,6 @@ class AuthService {
               'stage': 'backend_exchange',
               'interactive': interactive,
               'hasIdToken': idToken != null,
-              'hasAccessToken': accessToken != null,
               'googleUserEmail': currentUser?.email,
               'error': e.toString(),
             'clientId': _lastClientId,
@@ -196,7 +195,6 @@ class AuthService {
             'stage': 'google_tokens',
             'interactive': interactive,
             'hasIdToken': idToken != null,
-            'hasAccessToken': accessToken != null,
             'googleUserEmail': currentUser?.email,
             'clientId': _lastClientId,
             'serverId': _lastServerId,
@@ -217,7 +215,7 @@ class AuthService {
   }
 
   Future<void> signOut() async {
-    final client = _client();
+    final client = await _client();
     await client.signOut();
     currentUser = null;
     backendToken = null;

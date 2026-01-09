@@ -97,8 +97,6 @@ class NotificationPresenter {
     if (auth.stage != null) lines.add('Stage: ${auth.stage}');
     if (auth.interactive != null) lines.add('Interactive: ${auth.interactive}');
     if (auth.googleUserEmail != null) lines.add('Google user: ${auth.googleUserEmail}');
-    if (auth.clientId != null) lines.add('Client ID: ${auth.clientId}');
-    if (auth.serverId != null) lines.add('Server ID: ${auth.serverId}');
     if (auth.error != null) lines.add('Error: ${auth.error}');
 
     String? formattedTimestamp;

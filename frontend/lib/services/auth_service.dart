@@ -29,53 +29,24 @@ class AuthService {
 
   static const String _env = String.fromEnvironment('APP_ENV', defaultValue: 'prod');
   // Google OAuth client ID (web); used as serverClientId on mobile per google_sign_in_android guidance.
-  static const Map<String, Map<String, String>> _environmentsToClients = {
-    'dev': {
-      'web': '443293502674-6sh7ss1lfkea74rhmctmjghpbraprddn.apps.googleusercontent.com',
-      'android': '443293502674-tqvldv6fmtt70o5029nhcqs7hfadvf30.apps.googleusercontent.com'
-    },
-    'prod': {
-      'web': '443293502674-6sh7ss1lfkea74rhmctmjghpbraprddn.apps.googleusercontent.com',
-      // 'android': '870493288034-1j900o8ee8odcd80f7afa5qd38ujec7h.apps.googleusercontent.com'
-      // 'android': '870493288034-0br916cp2scpcuk4jk4aui03iibt7en0.apps.googleusercontent.com'
-      'android': '870493288034-vfuevtj7u6mpgo5ce0ds8jug11rdqsmj.apps.googleusercontent.com'
-    },
-  };
+  static const String webClientId = "870493288034-645v0rnvn0djspbue6fi3oovbosa1hht.apps.googleusercontent.com";
 
   GoogleSignIn? _googleSignIn;
   GoogleSignInAccount? currentUser;
   String? backendToken;
   String? backendRole;
-  String _lastClientId = '';
-  String _lastServerId = '';
+  String? _lastExchangedIdToken;
   bool _googleInitialized = false;
+  bool _signInInProgress = false;
+  bool _exchangeInProgress = false;
+  Future<GoogleSignInAccount?>? _ongoingSignIn;
 
   Future<GoogleSignIn> _client() async {
     // For Android/iOS, pass the web client ID as serverClientId; web uses the web client ID.
-    String clientId = '';
-    String serverId = '';
-    if (kIsWeb) {
-      try {
-        clientId = _environmentsToClients[_env]!['web']!;
-      } catch (e) {
-        logDebug("Error getting web client ID: $e");
-        throw Exception('Error getting web client ID for environment $_env: $e');
-      }
-    } else {
-      try {
-        serverId = _environmentsToClients[_env]!['android']!;
-      } catch (e) {
-        logDebug("Error getting android server ID: $e");
-        throw Exception('Error getting android server ID for environment $_env: $e');
-      }
-    }
-    _lastClientId = clientId;
-    _lastServerId = serverId;
     if (!_googleInitialized) {
-      logDebug("Initializing GoogleSignIn. Client ID: $clientId serverId: $serverId");
       await GoogleSignIn.instance.initialize(
-        clientId: clientId.isNotEmpty ? clientId : null,
-        serverClientId: serverId.isNotEmpty ? serverId : null,
+        clientId: kIsWeb ? webClientId : null,
+        serverClientId: kIsWeb ? null : webClientId,
       );
       _googleInitialized = true;
     }
@@ -83,7 +54,21 @@ class AuthService {
     return _googleSignIn!;
   }
 
-  Future<GoogleSignInAccount?> signIn({bool interactive = false}) async {
+  Future<GoogleSignInAccount?> signIn({bool interactive = false}) {
+    // Prevent overlapping sign-in flows; reuse the in-flight one.
+    if (_signInInProgress && _ongoingSignIn != null) {
+      logDebug("Sign-in already in progress; reusing ongoing future");
+      return _ongoingSignIn!;
+    }
+    _signInInProgress = true;
+    _ongoingSignIn = _signInInternal(interactive: interactive).whenComplete(() {
+      _signInInProgress = false;
+      _ongoingSignIn = null;
+    });
+    return _ongoingSignIn!;
+  }
+
+  Future<GoogleSignInAccount?> _signInInternal({required bool interactive}) async {
     // If MOCK_AUTH is enabled, skip Google and use injected token/role.
     if (const bool.fromEnvironment('MOCK_AUTH', defaultValue: false)) {
       logDebug("Signing in with mock auth");
@@ -135,9 +120,7 @@ class AuthService {
           data: {
             'stage': 'google_sign_in',
             'interactive': interactive,
-            'error': e.toString(),
-            'clientId': _lastClientId,
-            'serverId': _lastServerId,
+            'error': e.toString()
           },
         );
         throw SignInFailure(stage: 'google_sign_in', message: 'Google sign-in failed', cause: e);
@@ -154,15 +137,26 @@ class AuthService {
       logDebug("ID Token: $idToken");
       final tokenToUse = idToken;
       logDebug("Trying to exchange token...");
+      final alreadyExchanged = tokenToUse != null && _lastExchangedIdToken == tokenToUse && backendToken != null;
+      if (alreadyExchanged) {
+        logDebug("Skipping backend exchange; token already exchanged");
+        return currentUser;
+      }
       if (tokenToUse != null) {
         logDebug("We have a token to use");
         final broker = AuthBrokerService();
         logDebug("Exchanging token: $tokenToUse");
+        if (_exchangeInProgress) {
+          logDebug("Exchange already in progress; skipping duplicate");
+          return currentUser;
+        }
+        _exchangeInProgress = true;
         try {
           final result = await broker.exchange(idToken: idToken, accessToken: tokenToUse);
           logDebug("Exchange result: $result");
           backendToken = result.token;
           backendRole = result.role;
+          _lastExchangedIdToken = tokenToUse;
           logDebug("Backend token: $backendToken");
           logDebug("Backend role: $backendRole");
           await _persistBackendSession();
@@ -176,9 +170,7 @@ class AuthService {
               'interactive': interactive,
               'hasIdToken': idToken != null,
               'googleUserEmail': currentUser?.email,
-              'error': e.toString(),
-            'clientId': _lastClientId,
-            'serverId': _lastServerId,
+              'error': e.toString()
             },
           );
           throw SignInFailure(
@@ -186,6 +178,8 @@ class AuthService {
             message: 'Signed in with Google but backend token exchange failed',
             cause: e,
           );
+        } finally {
+          _exchangeInProgress = false;
         }
       } else {
         EventRecorder.record(
@@ -196,8 +190,6 @@ class AuthService {
             'interactive': interactive,
             'hasIdToken': idToken != null,
             'googleUserEmail': currentUser?.email,
-            'clientId': _lastClientId,
-            'serverId': _lastServerId,
           },
         );
         throw SignInFailure(

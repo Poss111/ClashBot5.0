@@ -103,8 +103,6 @@ class AuthNotification extends AppNotification {
   final bool? hasIdToken;
   final bool? hasAccessToken;
   final String? googleUserEmail;
-  final String? clientId;
-  final String? serverId;
   final String? error;
 
   AuthNotification({
@@ -119,8 +117,6 @@ class AuthNotification extends AppNotification {
     this.hasIdToken,
     this.hasAccessToken,
     this.googleUserEmail,
-    this.clientId,
-    this.serverId,
     this.error,
   });
 
@@ -141,8 +137,6 @@ class AuthNotification extends AppNotification {
       hasIdToken: _b('hasIdToken'),
       hasAccessToken: _b('hasAccessToken'),
       googleUserEmail: _s('googleUserEmail'),
-      clientId: _s('clientId'),
-      serverId: _s('serverId'),
       error: _s('error'),
     );
   }

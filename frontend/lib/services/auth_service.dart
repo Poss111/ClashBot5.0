@@ -37,8 +37,8 @@ class AuthService {
     'prod': {
       'web': '443293502674-6sh7ss1lfkea74rhmctmjghpbraprddn.apps.googleusercontent.com',
       // 'android': '870493288034-1j900o8ee8odcd80f7afa5qd38ujec7h.apps.googleusercontent.com'
-      'android': '870493288034-0br916cp2scpcuk4jk4aui03iibt7en0.apps.googleusercontent.com'
-      // 'android': '870493288034-vfuevtj7u6mpgo5ce0ds8jug11rdqsmj.apps.googleusercontent.com'
+      // 'android': '870493288034-0br916cp2scpcuk4jk4aui03iibt7en0.apps.googleusercontent.com'
+      'android': '870493288034-vfuevtj7u6mpgo5ce0ds8jug11rdqsmj.apps.googleusercontent.com'
     },
   };
 

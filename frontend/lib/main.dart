@@ -799,7 +799,10 @@ class _AppScaffold extends StatelessWidget {
                       alignment: Alignment.bottomLeft,
                       child: Text(
                         'Clash Companion',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white),
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(color: Theme.of(context).colorScheme.onPrimary),
                       ),
                     ),
                   ),
@@ -914,7 +917,10 @@ class _AppScaffold extends StatelessWidget {
             'Clash Companion is an independent app and is not affiliated with, endorsed by, '
             'or associated with Riot Games or League of Legends.',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ),
       ),
@@ -993,7 +999,13 @@ class _AppScaffold extends StatelessWidget {
                       children: [
                         Text(userName ?? userEmail ?? 'Signed in', style: Theme.of(context).textTheme.bodySmall),
                         if (userEmail != null)
-                          Text(userEmail!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
+                          Text(
+                            userEmail!,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          ),
                       ],
                     ),
                   ),
@@ -1084,7 +1096,11 @@ class _AppScaffold extends StatelessWidget {
                 ),
                 child: Text(
                   count > 99 ? '99+' : '$count',
-                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             )
@@ -1171,6 +1187,8 @@ class _NotificationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final title = presentation.title;
     final subtitle = presentation.subtitle;
     final causedBy = presentation.causedBy;
@@ -1180,13 +1198,13 @@ class _NotificationCard extends StatelessWidget {
     final isSuccess = presentation.severity == NotificationSeverity.success;
     final isInfo = presentation.severity == NotificationSeverity.info;
     final bgColor = isError
-        ? Colors.red
+        ? colors.error
         : isWarning
-            ? Colors.orange
+            ? AppBrandColors.warning
             : isSuccess
-                ? Colors.green
+                ? AppBrandColors.success
                 : isInfo
-                    ? Colors.blue
+                    ? AppBrandColors.info
                     : null;
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6),

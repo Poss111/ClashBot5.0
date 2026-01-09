@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/tournament.dart';
 import '../services/tournaments_service.dart';
+import '../theme.dart';
 
 class TournamentsListScreen extends StatefulWidget {
   final String? userEmail;
@@ -253,7 +254,11 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
                     ),
                     child: Text(
                       '$count',
-                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
               ],
@@ -302,12 +307,12 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
 
   Widget _buildErrorCard() {
     return Card(
-      color: Colors.red.shade50,
+      color: Theme.of(context).colorScheme.errorContainer.withOpacity(0.9),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            const Icon(Icons.error, color: Colors.red),
+            Icon(Icons.error, color: Theme.of(context).colorScheme.error),
             const SizedBox(width: 8),
             Expanded(child: Text(_error!)),
           ],
@@ -318,13 +323,13 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
 
   Widget _buildOfflineCard() {
     return Card(
-      color: Colors.orange.shade50,
+      color: AppBrandColors.warningSurface,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.cloud_off, color: Colors.orange),
+            Icon(Icons.cloud_off, color: Theme.of(context).colorScheme.secondary),
             const SizedBox(width: 8),
             Expanded(
               child: Column(
@@ -337,7 +342,7 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
                   const SizedBox(height: 4),
                   Text(
                     'Check connectivity, VPN/proxy settings, or try again shortly.',
-                    style: TextStyle(color: Colors.grey.shade700),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),
@@ -393,7 +398,7 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
                         : (tournament.name?.isNotEmpty == true ? tournament.name! : tournament.tournamentId),
                     style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: theme.brightness == Brightness.dark ? Colors.white : null,
+                      color: theme.colorScheme.onSurface,
                     ),
                   ),
                 ),
@@ -476,24 +481,25 @@ class _TournamentsListScreenState extends State<TournamentsListScreen> {
   }
 
   Color _statusIconColor(String status, ThemeData theme) {
+    final scheme = theme.colorScheme;
     switch (status.toLowerCase()) {
       case 'upcoming':
       case 'open':
-        return Colors.green.shade600;
+        return AppBrandColors.success;
       case 'in_progress':
       case 'live':
-        return Colors.orange.shade700;
+        return AppBrandColors.accent;
       case 'closed':
       case 'locked':
-        return Colors.blueGrey.shade600;
+        return scheme.outline;
       case 'cancelled':
       case 'canceled':
-        return Colors.red.shade600;
+        return scheme.error;
       case 'completed':
       case 'finished':
-        return Colors.blue.shade700;
+        return AppBrandColors.info;
       default:
-        return theme.colorScheme.primary;
+        return scheme.primary;
     }
   }
 

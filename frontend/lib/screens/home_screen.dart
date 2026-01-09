@@ -298,7 +298,7 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              const Icon(Icons.login, color: Colors.blue),
+              Icon(Icons.login, color: theme.colorScheme.primary),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -314,7 +314,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (_snapshotError != null) {
       return Card(
-        color: Colors.red.shade50,
+        color: theme.colorScheme.errorContainer.withOpacity(0.9),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -322,12 +322,12 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.error, color: Colors.red),
+                  Icon(Icons.error, color: theme.colorScheme.error),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Failed to load snapshot: $_snapshotError',
-                      style: TextStyle(color: Colors.red.shade800),
+                      style: TextStyle(color: theme.colorScheme.onErrorContainer),
                     ),
                   ),
                 ],
@@ -350,7 +350,7 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              const Icon(Icons.event_available, color: Colors.grey),
+              Icon(Icons.event_available, color: theme.colorScheme.outline),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -487,7 +487,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Text(
                       role[0],
                       style: TextStyle(
-                        color: isSelf ? Colors.white : theme.colorScheme.onSurfaceVariant,
+                        color: isSelf ? theme.colorScheme.onPrimary : theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ),
@@ -534,13 +534,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildHero(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final colors = theme.colorScheme;
 
     return Container(
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF111827) : const Color(0xFF0F172A),
-        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          colors: [
+            colors.primary,
+            colors.secondary.withOpacity(0.9),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: colors.primary.withOpacity(0.28),
+            blurRadius: 32,
+            offset: const Offset(0, 16),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -548,7 +562,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(
             'LEAGUE OF LEGENDS CLASH',
             style: theme.textTheme.labelLarge?.copyWith(
-              color: const Color(0xFFA5B4FC),
+              color: colors.onPrimary.withOpacity(0.82),
               letterSpacing: 0.08,
               fontWeight: FontWeight.w600,
             ),
@@ -557,7 +571,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(
             'Find your squad before Riot opens the gates.',
             style: theme.textTheme.headlineMedium?.copyWith(
-              color: isDark ? const Color(0xFFE5E7EB) : const Color(0xFFE2E8F0),
+              color: colors.onPrimary,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -565,7 +579,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(
             'Clash Companion keeps player signups in one place, matches roles fast, and gets teams ready for tournament day without last-minute chaos.',
             style: theme.textTheme.bodyLarge?.copyWith(
-              color: const Color(0xFFCBD5E1),
+              color: colors.onPrimary.withOpacity(0.88),
             ),
           ),
           const SizedBox(height: 24),

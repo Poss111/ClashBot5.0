@@ -109,15 +109,17 @@ class _TeamsScreenState extends State<TeamsScreen> {
   }
 
   Color _statusBackground(String? status) {
-    return status == 'maybe' ? Colors.orange.shade50 : Colors.green.shade50;
+    return status == 'maybe' ? AppBrandColors.warningSurface : AppBrandColors.successSurface;
   }
 
   Color _statusBorder(String? status) {
-    return status == 'maybe' ? Colors.orange.shade200 : Colors.green.shade200;
+    return status == 'maybe'
+        ? AppBrandColors.warning.withOpacity(0.6)
+        : AppBrandColors.success.withOpacity(0.6);
   }
 
   Color _statusText(String? status) {
-    return status == 'maybe' ? Colors.orange.shade800 : Colors.green.shade800;
+    return status == 'maybe' ? AppBrandColors.warning : AppBrandColors.success;
   }
 
   Future<void> _refreshTeams(String tournamentId) async {
@@ -430,7 +432,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
           TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
             child: const Text('Delete'),
           ),
         ],
@@ -494,7 +496,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor: isError ? Colors.red : null,
+        backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
       ),
     );
   }
@@ -907,7 +909,7 @@ class _TeamCard extends StatelessWidget {
                                   height: 18,
                                   child: CircularProgressIndicator(strokeWidth: 2),
                                 )
-                              : const Icon(Icons.delete_outline, color: Colors.red),
+                          : Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
                         ),
                     ],
                   ),
@@ -970,8 +972,8 @@ class _TeamCard extends StatelessWidget {
                                 child: ElevatedButton.icon(
                                   onPressed: isLeaving ? null : () => onLeave(role),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red.shade100,
-                                    foregroundColor: Colors.red.shade800,
+                                    backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                                    foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
                                     minimumSize: const Size(120, 40),
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 10,
@@ -1002,27 +1004,18 @@ class _TeamCard extends StatelessWidget {
                           side: BorderSide(color: borderColor),
                         ),
                         leading: icon != null ? Icon(icon, size: 20) : null,
-                        title: showCompact ? null : Text(role),
-                        subtitle: showCompact
-                            ? null
-                            : isOpenSlot
-                                ? null
-                                : Text(
-                                    status == 'maybe' ? 'Maybe' : 'All in',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: statusText(status),
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
+                        title: showCompact ? null : Text(
+                          role,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.inversePrimary),
+                        ),
                         trailing: showCompact
                             ? null
                             : existing == 'Open'
                                 ? hasError
-                                    ? const Text(
-                                        'Error',
-                                        style: TextStyle(color: Colors.red),
-                                      )
+                                          ? Text(
+                                              'Error',
+                                              style: TextStyle(color: Theme.of(context).colorScheme.error),
+                                            )
                                     : isBusy
                                         ? const SizedBox(
                                             width: 18,
@@ -1041,7 +1034,10 @@ class _TeamCard extends StatelessWidget {
                                         mainAxisSize: MainAxisSize.min,
                                         crossAxisAlignment: CrossAxisAlignment.end,
                                         children: [
-                                          Text(memberLabelText),
+                                          Text(
+                                            memberLabelText, 
+                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.inversePrimary),
+                                          ),
                                           const SizedBox(height: 4),
                                           Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1104,7 +1100,7 @@ class _TeamCard extends StatelessWidget {
                                                     strokeWidth: 2,
                                                   ),
                                                 )
-                                              : const Icon(Icons.close, color: Colors.red),
+                                              : Icon(Icons.close, color: Theme.of(context).colorScheme.error),
                                         ),
                                     ],
                                   ),

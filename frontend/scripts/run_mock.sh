@@ -18,8 +18,10 @@ set -euo pipefail
 ENV="${ENV:-dev}"
 API_PORT="${MOCK_API_PORT:-4000}"
 WS_PORT="${MOCK_WS_PORT:-4001}"
+HOST="${MOCK_HOST:-localhost}"
 DEVICE=""
 EXTRA_ARGS=()
+TARGET_FILE="${TARGET_FILE:-lib/main.dart}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -31,6 +33,8 @@ while [[ $# -gt 0 ]]; do
       WS_PORT="$2"; shift 2;;
     -d|--device)
       DEVICE="$2"; shift 2;;
+    --host)
+      HOST="$2"; shift 2;;
     --)
       shift
       EXTRA_ARGS+=("$@")
@@ -40,8 +44,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-ORIGIN="http://localhost:${API_PORT}"
-WS_ORIGIN="ws://localhost:${WS_PORT}"
+ORIGIN="http://${HOST}:${API_PORT}"
+WS_ORIGIN="ws://${HOST}:${WS_PORT}"
 
 CMD=(flutter run
   --dart-define=APP_ENV="${ENV}"
@@ -49,6 +53,7 @@ CMD=(flutter run
   --dart-define=CLOUDFRONT_WS_ORIGIN="${WS_ORIGIN}"
   --dart-define=MOCK_API_ORIGIN="${ORIGIN}"
   --dart-define=MOCK_WS_ORIGIN="${WS_ORIGIN}"
+  --target="${TARGET_FILE}"
   --dart-define=MOCK_AUTH=true
   --dart-define=MOCK_TOKEN=mock-jwt-token
   --dart-define=MOCK_ROLE=GENERAL_USER
@@ -63,5 +68,9 @@ if [[ ${#EXTRA_ARGS[@]} -gt 0 ]]; then
 fi
 
 echo "+ ${CMD[*]}"
-exec "${CMD[@]}"
+if [[ -n "${RUN_MOCK_NO_EXEC:-}" ]]; then
+  "${CMD[@]}"
+else
+  exec "${CMD[@]}"
+fi
 

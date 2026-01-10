@@ -9,6 +9,12 @@ This is the Flutter frontend application for ClashBot. It supports multiple plat
 3. Run `flutter run -d chrome` for web development
 4. Run `flutter run` to see available devices
 
+### Local mock stack (one command)
+- Start REST, WebSocket, and Flutter against mocks: `./scripts/dev_mock_stack.sh`
+- Defaults: APP_ENV=dev, REST on :4000/api/dev, WS on :4001/events/dev, device=chrome.
+- Customize: `-d macos`, `-a/--android` (sets host to 10.0.2.2 and uses `ANDROID_DEVICE` or emulator-5556), `--env prod`, `--api-port 4100`, `--ws-port 4101`, `--host 10.0.2.2`, or `--no-flutter` to just run mocks.
+- Pass extra Flutter flags after `--`, e.g. `./scripts/dev_mock_stack.sh -- --web-renderer html`.
+
 ## Building
 
 - **Web**: `flutter build web`

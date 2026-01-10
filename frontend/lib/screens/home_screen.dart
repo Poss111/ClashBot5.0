@@ -424,22 +424,23 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Text(
-                  'Preferred champions for ${snapshot.role}',
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'Preferred champions for ${snapshot.role}',
+                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              if (widget.navEnabled)
+                TextButton.icon(
+                  onPressed: () => context.go('/settings'),
+                  icon: const Icon(Icons.favorite_border),
+                  label: const Text('Edit favorites'),
                 ),
-                if (widget.navEnabled) ...[
-                  const Spacer(),
-                  TextButton.icon(
-                    onPressed: () => context.go('/settings'),
-                    icon: const Icon(Icons.favorite_border),
-                    label: const Text('Edit favorites'),
-                  ),
-                ]
-              ],
-            ),
+            ],
+          ),
             const SizedBox(height: 6),
             if (snapshot.favorites.isNotEmpty)
               Wrap(

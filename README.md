@@ -11,6 +11,14 @@ A tournament management system for League of Legends Clash, built with Flutter f
 
 ClashCompanion uses AWS Step Functions to orchestrate the tournament assignment workflow. The workflow is triggered via API Gateway and executes three sequential Lambda functions to register tournaments, assign players to teams, and lock teams for submission.
 
+## Developer Quickstart
+- Start the full local mock stack (REST + WS + Flutter) with one command:
+  `./frontend/scripts/dev_mock_stack.sh` (defaults to Chrome, APP_ENV=dev).
+- Pass `-d macos`, `--env prod`, or `--api-port/--ws-port` to change device or ports.
+- Use `-a/--android` to target the Android emulator (default device `emulator-5556`; override via `ANDROID_DEVICE`).
+- Android flag will automatically point the mock host to `10.0.2.2`; override with `--host` or `MOCK_HOST`.
+- Use `--no-flutter` if you only want the mock services running.
+
 ## Step Function Workflow
 
 The assignment workflow is orchestrated by an AWS Step Functions state machine that executes the following steps sequentially:

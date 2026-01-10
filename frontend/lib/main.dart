@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:provider/provider.dart';
+import 'package:feature_discovery/feature_discovery.dart';
 import 'screens/home_screen.dart';
 import 'screens/tournaments_list_screen.dart';
 import 'screens/teams_screen.dart';
@@ -28,7 +30,20 @@ import 'package:web_socket_channel/io.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ClashCompanionApp());
+  final userService = UserService();
+  final tournamentsService = TournamentsService();
+  runApp(
+    FeatureDiscovery(
+      child: MultiProvider(
+        providers: [
+          Provider<AuthService>.value(value: AuthService.instance),
+          Provider<UserService>.value(value: userService),
+          Provider<TournamentsService>.value(value: tournamentsService),
+        ],
+        child: const ClashCompanionApp(),
+      ),
+    ),
+  );
 }
 
 class ClashCompanionApp extends StatefulWidget {
@@ -50,7 +65,8 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
     importance: Importance.high,
   );
   static const _prefsDisclaimerSeen = 'disclaimer_seen';
-  final _userService = UserService();
+  late final UserService _userService;
+  late final TournamentsService _tournamentsService;
   String? _userId;
   String? _userEmail;
   String? _userName;
@@ -67,6 +83,8 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
   @override
   void initState() {
     super.initState();
+    _userService = context.read<UserService>();
+    _tournamentsService = context.read<TournamentsService>();
     _router = GoRouter(
       navigatorKey: _routerKey,
       routes: [
@@ -253,7 +271,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
       _loadUser();
       _maybeShowDisclaimer();
       // Warm tournaments cache on app start.
-      TournamentsService().refreshCache();
+      _tournamentsService.refreshCache();
     });
     _initNotifications();
     EventRecorder.register(_pushEvent);
@@ -551,7 +569,7 @@ class _ClashCompanionAppState extends State<ClashCompanionApp> {
         final type = item.type.toLowerCase();
         if (type.contains('tournament')) {
           // Refresh tournament cache when a new tournament event arrives.
-          TournamentsService().refreshCache();
+          _tournamentsService.refreshCache();
         }
         _maybeNotifyTournament(item);
       }, onError: (_) {
@@ -799,7 +817,10 @@ class _AppScaffold extends StatelessWidget {
                       alignment: Alignment.bottomLeft,
                       child: Text(
                         'Clash Companion',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white),
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(color: Theme.of(context).colorScheme.onPrimary),
                       ),
                     ),
                   ),
@@ -914,7 +935,10 @@ class _AppScaffold extends StatelessWidget {
             'Clash Companion is an independent app and is not affiliated with, endorsed by, '
             'or associated with Riot Games or League of Legends.',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ),
       ),
@@ -993,7 +1017,13 @@ class _AppScaffold extends StatelessWidget {
                       children: [
                         Text(userName ?? userEmail ?? 'Signed in', style: Theme.of(context).textTheme.bodySmall),
                         if (userEmail != null)
-                          Text(userEmail!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)),
+                          Text(
+                            userEmail!,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          ),
                       ],
                     ),
                   ),
@@ -1084,7 +1114,11 @@ class _AppScaffold extends StatelessWidget {
                 ),
                 child: Text(
                   count > 99 ? '99+' : '$count',
-                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             )
@@ -1171,6 +1205,8 @@ class _NotificationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final title = presentation.title;
     final subtitle = presentation.subtitle;
     final causedBy = presentation.causedBy;
@@ -1180,13 +1216,13 @@ class _NotificationCard extends StatelessWidget {
     final isSuccess = presentation.severity == NotificationSeverity.success;
     final isInfo = presentation.severity == NotificationSeverity.info;
     final bgColor = isError
-        ? Colors.red
+        ? colors.error
         : isWarning
-            ? Colors.orange
+            ? AppBrandColors.warning
             : isSuccess
-                ? Colors.green
+                ? AppBrandColors.success
                 : isInfo
-                    ? Colors.blue
+                    ? AppBrandColors.info
                     : null;
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6),

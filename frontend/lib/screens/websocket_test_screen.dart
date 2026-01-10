@@ -6,6 +6,7 @@ import 'package:web_socket_channel/status.dart' as ws_status;
 import '../services/api_config.dart';
 import '../services/websocket_config.dart';
 import '../services/auth_service.dart';
+import '../theme.dart';
 
 class WebSocketTestScreen extends StatefulWidget {
   final String? userEmail;
@@ -488,7 +489,7 @@ class _WebSocketTestScreenState extends State<WebSocketTestScreen> {
                             const SizedBox(width: 8),
                             Icon(
                               _wsConnected ? Icons.check_circle : Icons.cancel,
-                              color: _wsConnected ? Colors.green : Colors.red,
+                              color: _wsConnected ? AppBrandColors.success : Theme.of(context).colorScheme.error,
                             ),
                             const SizedBox(width: 4),
                             Text(_wsConnected ? 'Connected' : 'Disconnected'),
@@ -511,7 +512,8 @@ class _WebSocketTestScreenState extends State<WebSocketTestScreen> {
                         ? Center(
                             child: Text(
                               'No events yet',
-                              style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey),
+                              style: theme.textTheme.bodyMedium
+                                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                             ),
                           )
                         : ListView.builder(

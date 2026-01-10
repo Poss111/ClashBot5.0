@@ -1,6 +1,7 @@
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:clash_companion/theme.dart';
 import 'package:flutter/material.dart';
+import 'package:feature_discovery/feature_discovery.dart';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import '../models/tournament.dart';
@@ -21,7 +22,13 @@ class _TeamsScreenState extends State<TeamsScreen> {
   final teamsService = TeamsService();
   late Future<List<Tournament>> _tournamentsFuture;
   final Map<String, Future<List<Team>>> _teamFutures = {};
-  final List<String> _roleOrder = const ['Top', 'Jungle', 'Mid', 'Bot', 'Support'];
+  final List<String> _roleOrder = const [
+    'Top',
+    'Jungle',
+    'Mid',
+    'Bot',
+    'Support'
+  ];
   String? _busyTeamId;
   String? _busyRole;
   final Set<String> _roleErrors = {};
@@ -43,7 +50,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
   }
 
   Future<List<Team>> _teamsFuture(String tournamentId) {
-    return _teamFutures.putIfAbsent(tournamentId, () => teamsService.list(tournamentId));
+    return _teamFutures.putIfAbsent(
+        tournamentId, () => teamsService.list(tournamentId));
   }
 
   Future<void> _refreshTeam(String tournamentId, String teamId) async {
@@ -70,7 +78,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
   String _formatUpdated(DateTime? dt) {
     if (dt == null) return 'Updated: --';
     final now = DateTime.now();
-    final sameDay = dt.year == now.year && dt.month == now.month && dt.day == now.day;
+    final sameDay =
+        dt.year == now.year && dt.month == now.month && dt.day == now.day;
     final formattedTime = AppDateFormats.formatJustTime(dt);
     final formattedDate = AppDateFormats.formatStandard(dt);
     return sameDay ? 'Updated: $formattedTime' : 'Updated: $formattedDate';
@@ -97,7 +106,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
   }
 
   String _labelForUser(String? userId, String? displayName) {
-    if (displayName != null && displayName.trim().isNotEmpty) return displayName.trim();
+    if (displayName != null && displayName.trim().isNotEmpty)
+      return displayName.trim();
     return _maskIdentifier(userId);
   }
 
@@ -108,16 +118,29 @@ class _TeamsScreenState extends State<TeamsScreen> {
     return _labelForUser(existing, display);
   }
 
-  Color _statusBackground(String? status) {
-    return status == 'maybe' ? Colors.orange.shade50 : Colors.green.shade50;
+  Color _statusBackground(BuildContext context, String? status) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (isDark) {
+      // Darken the fill for better contrast in dark mode.
+      return (status == 'maybe'
+              ? AppBrandColors.warning
+              : AppBrandColors.success)
+          .withOpacity(0.20);
+    }
+    return status == 'maybe'
+        ? AppBrandColors.warningSurface
+        : AppBrandColors.successSurface;
   }
 
-  Color _statusBorder(String? status) {
-    return status == 'maybe' ? Colors.orange.shade200 : Colors.green.shade200;
+  Color _statusBorder(BuildContext context, String? status) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final base =
+        status == 'maybe' ? AppBrandColors.warning : AppBrandColors.success;
+    return base.withOpacity(isDark ? 0.9 : 0.6);
   }
 
   Color _statusText(String? status) {
-    return status == 'maybe' ? Colors.orange.shade800 : Colors.green.shade800;
+    return status == 'maybe' ? AppBrandColors.warning : AppBrandColors.success;
   }
 
   Future<void> _refreshTeams(String tournamentId) async {
@@ -130,7 +153,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
 
   Future<List<Tournament>> _loadTournaments() async {
     final items = await tournamentsService.list();
-    final upcomingOrFuture = items.where((t) => (t.status ?? 'upcoming') == 'upcoming').toList();
+    final upcomingOrFuture =
+        items.where((t) => (t.status ?? 'upcoming') == 'upcoming').toList();
     upcomingOrFuture.sort((a, b) {
       final aStart = _safeParse(a.startTime);
       final bStart = _safeParse(b.startTime);
@@ -203,7 +227,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
     });
     const defaultStatus = 'all_in';
     try {
-      await teamsService.assignRole(t.tournamentId, team.teamId, role, pid, status: defaultStatus);
+      await teamsService.assignRole(t.tournamentId, team.teamId, role, pid,
+          status: defaultStatus);
       setState(() {
         team.members ??= {};
         // Clear any prior role this user held on this team (swap support).
@@ -220,7 +245,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
         }
         team.members![role] = pid;
         team.memberDisplayNames ??= {};
-        team.memberDisplayNames![role] = _currentUserDisplayName ?? _maskIdentifier(pid);
+        team.memberDisplayNames![role] =
+            _currentUserDisplayName ?? _maskIdentifier(pid);
         team.memberStatuses ??= {};
         team.memberStatuses![role] = defaultStatus;
         _busyTeamId = null;
@@ -242,14 +268,16 @@ class _TeamsScreenState extends State<TeamsScreen> {
     }
   }
 
-  Future<void> _updateAvailability(Tournament t, Team team, String role, String status) async {
+  Future<void> _updateAvailability(
+      Tournament t, Team team, String role, String status) async {
     final pid = _currentUserId;
     if (pid == null) {
       _showSnack('Sign in to update your status', isError: true);
       return;
     }
     if ((team.members ?? {})[role] != pid) {
-      _showSnack('Only the player in this role can update the status', isError: true);
+      _showSnack('Only the player in this role can update the status',
+          isError: true);
       return;
     }
     final key = '${team.teamId}:$role';
@@ -257,7 +285,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
       _statusUpdatingKey = key;
     });
     try {
-      await teamsService.updateMemberStatus(t.tournamentId, team.teamId, role, pid, status);
+      await teamsService.updateMemberStatus(
+          t.tournamentId, team.teamId, role, pid, status);
       setState(() {
         team.memberStatuses ??= {};
         team.memberStatuses![role] = status;
@@ -324,7 +353,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
       _creatingTournamentId = t.tournamentId;
     });
     try {
-      await teamsService.createTeam(t.tournamentId, displayName: teamName.trim(), role: role);
+      await teamsService.createTeam(t.tournamentId,
+          displayName: teamName.trim(), role: role);
       await _refreshTeams(t.tournamentId);
       _showSnack('Created team $teamName as $role');
     } catch (e) {
@@ -360,12 +390,14 @@ class _TeamsScreenState extends State<TeamsScreen> {
                     children: [
                       TextField(
                         controller: nameController,
-                        decoration: const InputDecoration(labelText: 'Team name'),
+                        decoration:
+                            const InputDecoration(labelText: 'Team name'),
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
                         value: selectedRole,
-                        decoration: const InputDecoration(labelText: 'Your role'),
+                        decoration:
+                            const InputDecoration(labelText: 'Your role'),
                         items: _roleOrder
                             .map((r) => DropdownMenuItem<String>(
                                   value: r,
@@ -425,12 +457,16 @@ class _TeamsScreenState extends State<TeamsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete team'),
-        content: Text('Delete ${team.displayName ?? team.teamId}? This cannot be undone.'),
+        content: Text(
+            'Delete ${team.displayName ?? team.teamId}? This cannot be undone.'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error),
             child: const Text('Delete'),
           ),
         ],
@@ -456,7 +492,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
     }
   }
 
-  Future<void> _kickMember(Tournament t, Team team, String role, String playerId) async {
+  Future<void> _kickMember(
+      Tournament t, Team team, String role, String playerId) async {
     if (!_isCaptain(team)) {
       _showSnack('Only the captain can remove members', isError: true);
       return;
@@ -470,7 +507,8 @@ class _TeamsScreenState extends State<TeamsScreen> {
       _kickingKey = key;
     });
     try {
-      final removedLabel = _labelForUser(playerId, team.memberDisplayNames?[role]);
+      final removedLabel =
+          _labelForUser(playerId, team.memberDisplayNames?[role]);
       await teamsService.removeMember(t.tournamentId, team.teamId, role);
       setState(() {
         team.members ??= {};
@@ -494,7 +532,7 @@ class _TeamsScreenState extends State<TeamsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor: isError ? Colors.red : null,
+        backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
       ),
     );
   }
@@ -508,9 +546,29 @@ class _TeamsScreenState extends State<TeamsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Teams',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            Row(
+              children: [
+                Text(
+                  'Teams',
+                  style:
+                      theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: 'Show quick tour',
+                  icon: const Icon(Icons.help_outline),
+                  onPressed: () {
+                    FeatureDiscovery.discoverFeatures(
+                      context,
+                      const {
+                        'teams.filter',
+                        'teams.create',
+                        'teams.card',
+                      },
+                    );
+                  },
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             FutureBuilder<List<Tournament>>(
@@ -554,18 +612,28 @@ class _TeamsScreenState extends State<TeamsScreen> {
                     },
                   ),
                 );
-                return Row(
-                  children: [
-                    const Text('Filter by tournament:'),
-                    const SizedBox(width: 12),
-                    if (kIsWeb)
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 360),
-                        child: dropdown,
-                      )
-                    else
-                      Expanded(child: dropdown),
-                  ],
+                return DescribedFeatureOverlay(
+                  featureId: 'teams.filter',
+                  tapTarget: const Icon(Icons.filter_alt),
+                  title: const Text('Filter by tournament'),
+                  description:
+                      const Text('Choose a bracket to see teams for that day.'),
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  targetColor: Colors.white,
+                  textColor: Colors.white,
+                  child: Row(
+                    children: [
+                      const Text('Filter by tournament:'),
+                      const SizedBox(width: 12),
+                      if (kIsWeb)
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 360),
+                          child: dropdown,
+                        )
+                      else
+                        Expanded(child: dropdown),
+                    ],
+                  ),
                 );
               },
             ),
@@ -582,11 +650,13 @@ class _TeamsScreenState extends State<TeamsScreen> {
                   }
                   var tournaments = snapshot.data ?? [];
                   if (_selectedTournamentId != null) {
-                    tournaments =
-                        tournaments.where((t) => t.tournamentId == _selectedTournamentId).toList();
+                    tournaments = tournaments
+                        .where((t) => t.tournamentId == _selectedTournamentId)
+                        .toList();
                   }
                   if (tournaments.isEmpty) {
-                    return const Center(child: Text('No upcoming tournaments found.'));
+                    return const Center(
+                        child: Text('No upcoming tournaments found.'));
                   }
                   return ListView.builder(
                     itemCount: tournaments.length,
@@ -595,10 +665,12 @@ class _TeamsScreenState extends State<TeamsScreen> {
                       return FutureBuilder<List<Team>>(
                         future: _teamsFuture(t.tournamentId),
                         builder: (context, teamsSnapshot) {
-                          if (teamsSnapshot.connectionState == ConnectionState.waiting) {
+                          if (teamsSnapshot.connectionState ==
+                              ConnectionState.waiting) {
                             return Card(
                               child: ListTile(
-                                title: Text(t.nameKeySecondary ?? t.tournamentId),
+                                title:
+                                    Text(t.nameKeySecondary ?? t.tournamentId),
                                 subtitle: const Text('Loading teams...'),
                               ),
                             );
@@ -606,37 +678,60 @@ class _TeamsScreenState extends State<TeamsScreen> {
                           if (teamsSnapshot.hasError) {
                             return Card(
                               child: ListTile(
-                                title: Text(t.nameKeySecondary ?? t.tournamentId),
-                                subtitle: Text('Error loading teams: ${teamsSnapshot.error}'),
+                                title:
+                                    Text(t.nameKeySecondary ?? t.tournamentId),
+                                subtitle: Text(
+                                    'Error loading teams: ${teamsSnapshot.error}'),
                               ),
                             );
                           }
                           final teams = teamsSnapshot.data ?? [];
-                          final isCreatingHere = _creatingTournamentId == t.tournamentId;
+                          final isCreatingHere =
+                              _creatingTournamentId == t.tournamentId;
                           final alreadyInTeam = _currentUserId != null &&
-                              teams.any((tm) => (tm.members ?? {}).values.contains(_currentUserId));
+                              teams.any((tm) => (tm.members ?? {})
+                                  .values
+                                  .contains(_currentUserId));
                           final isCaptainInTournament =
-                              _currentUserId != null && teams.any((tm) => _isCaptain(tm));
+                              _currentUserId != null &&
+                                  teams.any((tm) => _isCaptain(tm));
                           final Widget? createButton = isCaptainInTournament
                               ? null
                               : Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 8),
                                   child: Align(
                                     alignment: Alignment.centerLeft,
-                                    child: ElevatedButton.icon(
-                                      onPressed: isCreatingHere
-                                          ? null
-                                          : alreadyInTeam
-                                              ? () => _showSnack('Leave or disband your current team first', isError: true)
-                                              : () => _openCreateTeamDialog(t),
-                                      icon: isCreatingHere
-                                          ? const SizedBox(
-                                              width: 16,
-                                              height: 16,
-                                              child: CircularProgressIndicator(strokeWidth: 2),
-                                            )
-                                          : const Icon(Icons.group_add),
-                                      label: Text(isCreatingHere ? 'Creating...' : 'Create team'),
+                                    child: DescribedFeatureOverlay(
+                                      featureId: 'teams.create',
+                                      tapTarget: const Icon(Icons.group_add),
+                                      title: const Text('Create a team'),
+                                      description: const Text(
+                                          'Start a new roster and invite players before Clash lock.'),
+                                      backgroundColor:
+                                          Theme.of(context).colorScheme.primary,
+                                      targetColor: Colors.white,
+                                      textColor: Colors.white,
+                                      child: ElevatedButton.icon(
+                                        onPressed: isCreatingHere
+                                            ? null
+                                            : alreadyInTeam
+                                                ? () => _showSnack(
+                                                    'Leave or disband your current team first',
+                                                    isError: true)
+                                                : () => _openCreateTeamDialog(t),
+                                        icon: isCreatingHere
+                                            ? const SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child: CircularProgressIndicator(
+                                                    strokeWidth: 2),
+                                              )
+                                            : const Icon(Icons.group_add),
+                                        label: Text(isCreatingHere
+                                            ? 'Creating...'
+                                            : 'Create team'),
+                                      ),
                                     ),
                                   ),
                                 );
@@ -645,52 +740,80 @@ class _TeamsScreenState extends State<TeamsScreen> {
                               : teams.map((team) {
                                   final members = team.members ?? {};
                                   final isCaptain = _isCaptain(team);
-                                  final deleting = _deletingTeamId == team.teamId;
-                                  final userInThisTeam = _currentUserId != null && members.values.contains(_currentUserId);
+                                  final deleting =
+                                      _deletingTeamId == team.teamId;
+                                  final userInThisTeam = _currentUserId !=
+                                          null &&
+                                      members.values.contains(_currentUserId);
                                   final updatedAt = _teamUpdatedAt[team.teamId];
-                                  return _TeamCard(
-                                    tournament: t,
-                                    team: team,
-                                    members: members,
-                                    isCaptain: isCaptain,
-                                    deleting: deleting,
-                                    userInThisTeam: userInThisTeam,
-                                    updatedAt: updatedAt,
-                                    currentUserId: _currentUserId,
-                                    busyTeamId: _busyTeamId,
-                                    busyRole: _busyRole,
-                                    roleErrors: _roleErrors,
-                                    kickingKey: _kickingKey,
-                                    leaveRevealKey: _leaveRevealKey,
-                                    leaveBusyKey: _leaveBusyKey,
-                                    statusUpdatingKey: _statusUpdatingKey,
-                                    teamRefreshing: _teamRefreshing[team.teamId] == true,
-                                    roleOrder: _roleOrder,
-                                    onRefresh: () => _refreshTeam(t.tournamentId, team.teamId),
-                                    onDelete: isCaptain ? () => _deleteTeam(t, team) : null,
-                                    onJoin: (role) => _joinTeam(t, team, role),
-                                    onKick: (role, player) => _kickMember(t, team, role, player),
-                                    onToggleLeave: _toggleLeaveReveal,
-                                    onLeave: (role) => _leaveTeamRole(t, team, role),
-                                    onUpdateStatus: (role, status) => _updateAvailability(t, team, role, status),
-                                    memberLabel: (teamArg, role) => _memberLabel(teamArg, role),
-                                    tournamentLabel: _tournamentLabel(t),
-                                    formatUpdated: _formatUpdated(updatedAt),
-                                    statusBackground: _statusBackground,
-                                    statusBorder: _statusBorder,
-                                    statusText: _statusText,
-                                    roleIcon: _roleIcon,
-                                    onDeepDive: () => context.go(
-                                      '/teams/${t.tournamentId}/${team.teamId}/draft',
-                                      extra: {
-                                        'teamName': team.displayName ?? team.teamId,
-                                        'tournamentLabel': _tournamentLabel(t),
-                                      },
+                                  return DescribedFeatureOverlay(
+                                    featureId: 'teams.card',
+                                    tapTarget: const Icon(Icons.view_carousel),
+                                    title: const Text('Manage your roster'),
+                                    description: const Text(
+                                        'Tap into the card to review roles, refresh, or edit your team.'),
+                                    backgroundColor:
+                                        Theme.of(context).colorScheme.primary,
+                                    targetColor: Colors.white,
+                                    textColor: Colors.white,
+                                    child: _TeamCard(
+                                      tournament: t,
+                                      team: team,
+                                      members: members,
+                                      isCaptain: isCaptain,
+                                      deleting: deleting,
+                                      userInThisTeam: userInThisTeam,
+                                      updatedAt: updatedAt,
+                                      currentUserId: _currentUserId,
+                                      busyTeamId: _busyTeamId,
+                                      busyRole: _busyRole,
+                                      roleErrors: _roleErrors,
+                                      kickingKey: _kickingKey,
+                                      leaveRevealKey: _leaveRevealKey,
+                                      leaveBusyKey: _leaveBusyKey,
+                                      statusUpdatingKey: _statusUpdatingKey,
+                                      teamRefreshing:
+                                          _teamRefreshing[team.teamId] == true,
+                                      roleOrder: _roleOrder,
+                                      onRefresh: () =>
+                                          _refreshTeam(t.tournamentId, team.teamId),
+                                      onDelete: isCaptain
+                                          ? () => _deleteTeam(t, team)
+                                          : null,
+                                      onJoin: (role) => _joinTeam(t, team, role),
+                                      onKick: (role, player) =>
+                                          _kickMember(t, team, role, player),
+                                      onToggleLeave: _toggleLeaveReveal,
+                                      onLeave: (role) =>
+                                          _leaveTeamRole(t, team, role),
+                                      onUpdateStatus: (role, status) =>
+                                          _updateAvailability(
+                                              t, team, role, status),
+                                      memberLabel: (teamArg, role) =>
+                                          _memberLabel(teamArg, role),
+                                      tournamentLabel: _tournamentLabel(t),
+                                      formatUpdated: _formatUpdated(updatedAt),
+                                      statusBackground: (ctx, status) =>
+                                          _statusBackground(ctx, status),
+                                      statusBorder: (ctx, status) =>
+                                          _statusBorder(ctx, status),
+                                      statusText: _statusText,
+                                      roleIcon: _roleIcon,
+                                      onDeepDive: () => context.go(
+                                        '/teams/${t.tournamentId}/${team.teamId}/draft',
+                                        extra: {
+                                          'teamName':
+                                              team.displayName ?? team.teamId,
+                                          'tournamentLabel': _tournamentLabel(t),
+                                        },
+                                      ),
                                     ),
                                   );
                                 }).toList();
-                          final isMobileViewport = MediaQuery.of(context).size.width < 720;
-                          final carouselIndex = _carouselIndex[t.tournamentId] ?? 0;
+                          final isMobileViewport =
+                              MediaQuery.of(context).size.width < 720;
+                          final carouselIndex =
+                              _carouselIndex[t.tournamentId] ?? 0;
                           final totalTeams = teamCards.length;
                           final Widget teamsList = teams.isEmpty
                               ? const ListTile(title: Text('No teams yet.'))
@@ -704,11 +827,13 @@ class _TeamsScreenState extends State<TeamsScreen> {
                                           enableInfiniteScroll: false,
                                           viewportFraction: 0.9,
                                           enlargeCenterPage: true,
-                                          enlargeStrategy: CenterPageEnlargeStrategy.height,
+                                          enlargeStrategy:
+                                              CenterPageEnlargeStrategy.height,
                                           padEnds: true,
                                           onPageChanged: (index, _) {
                                             setState(() {
-                                              _carouselIndex[t.tournamentId] = index;
+                                              _carouselIndex[t.tournamentId] =
+                                                  index;
                                             });
                                           },
                                         ),
@@ -727,18 +852,26 @@ class _TeamsScreenState extends State<TeamsScreen> {
                                   Padding(
                                     padding: const EdgeInsets.only(top: 8),
                                     child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: List.generate(totalTeams, (i) {
                                         final active = i == carouselIndex;
                                         return Container(
                                           width: active ? 16 : 8,
                                           height: 8,
-                                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                                          margin: const EdgeInsets.symmetric(
+                                              horizontal: 4),
                                           decoration: BoxDecoration(
                                             color: active
-                                                ? Theme.of(context).colorScheme.primary
-                                                : Theme.of(context).colorScheme.primary.withOpacity(0.3),
-                                            borderRadius: BorderRadius.circular(8),
+                                                ? Theme.of(context)
+                                                    .colorScheme
+                                                    .primary
+                                                : Theme.of(context)
+                                                    .colorScheme
+                                                    .primary
+                                                    .withOpacity(0.3),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
                                           ),
                                         );
                                       }),
@@ -824,8 +957,8 @@ class _TeamCard extends StatelessWidget {
   final String Function(Team team, String role) memberLabel;
   final String tournamentLabel;
   final String formatUpdated;
-  final Color Function(String? status) statusBackground;
-  final Color Function(String? status) statusBorder;
+  final Color Function(BuildContext context, String? status) statusBackground;
+  final Color Function(BuildContext context, String? status) statusBorder;
   final Color Function(String? status) statusText;
   final IconData? Function(String role) roleIcon;
   final VoidCallback onDeepDive;
@@ -835,289 +968,395 @@ class _TeamCard extends StatelessWidget {
     final memberStatuses = team.memberStatuses ?? {};
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          side: BorderSide(color: Theme.of(context).dividerColor),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    tournamentLabel,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w700,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Keep cards readable on narrow screens while preventing overly wide layouts.
+          final cardWidth = constraints.maxWidth.clamp(320.0, 420.0);
+          return Center(
+            child: SizedBox(
+              width: cardWidth,
+              child: Card(
+                elevation: 10,
+                shape: RoundedRectangleBorder(
+                  side: BorderSide(color: Theme.of(context).dividerColor),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  team.displayName ?? team.teamId,
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  formatUpdated,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                          PopupMenuButton<String>(
+                            tooltip: 'Team actions',
+                            onSelected: (value) {
+                              switch (value) {
+                                case 'refresh':
+                                  if (!teamRefreshing) onRefresh();
+                                  break;
+                                case 'deep_dive':
+                                  onDeepDive();
+                                  break;
+                                case 'delete':
+                                  if (onDelete != null && !deleting)
+                                    onDelete!();
+                                  break;
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              PopupMenuItem<String>(
+                                value: 'refresh',
+                                enabled: !teamRefreshing,
+                                child: Row(
+                                  children: const [
+                                    Icon(Icons.refresh, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Refresh team'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem<String>(
+                                value: 'deep_dive',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.analytics_outlined, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Draft deep dive'),
+                                  ],
+                                ),
+                              ),
+                              if (isCaptain && onDelete != null)
+                                PopupMenuItem<String>(
+                                  value: 'delete',
+                                  enabled: !deleting,
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.delete_outline,
+                                          size: 18,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .error),
+                                      const SizedBox(width: 8),
+                                      const Text('Delete team'),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                            icon: deleting || teamRefreshing
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.more_vert),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            tournamentLabel,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
                         ),
+                      ),
+                      const SizedBox(height: 6),
+                      const SizedBox(height: 8),
+                      ...roleOrder.map((role) {
+                        final existing = members[role] ?? 'Open';
+                        final icon = roleIcon(role);
+                        final isCaptainRole = existing == team.captainSummoner;
+                        final isBusy =
+                            busyTeamId == team.teamId && busyRole == role;
+                        final teamBusy =
+                            busyTeamId == team.teamId && busyRole != role;
+                        final hasError =
+                            roleErrors.contains('${team.teamId}:$role');
+                        final isKicking = kickingKey == '${team.teamId}:$role';
+                        final isSelf = existing == currentUserId;
+                        final userOnAnotherRoleSameTeam =
+                            userInThisTeam && existing != currentUserId;
+                        final memberLabelText = memberLabel(team, role);
+                        final status = existing == 'Open'
+                            ? null
+                            : memberStatuses[role] ?? 'all_in';
+                        final isOpenSlot = existing == 'Open';
+                        final statusUpdating =
+                            statusUpdatingKey == '${team.teamId}:$role';
+                        final tileColor = isOpenSlot
+                            ? null
+                            : statusBackground(context, status);
+                        final borderColor = isOpenSlot
+                            ? Theme.of(context).dividerColor
+                            : statusBorder(context, status);
+                        final leaveKey = '${team.teamId}:$role';
+                        final leaveRevealed =
+                            isSelf && leaveRevealKey == leaveKey;
+                        final isLeaving = leaveBusyKey == leaveKey;
+                        final showCompact = leaveRevealed;
+
+                        // Build the role row as a reusable tile, allowing captains to swipe to remove.
+                        Widget roleTile = ListTile(
+                          onTap: isSelf ? () => onToggleLeave(leaveKey) : null,
+                          dense: true,
+                          tileColor: tileColor,
+                          contentPadding:
+                              const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          minLeadingWidth: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                            side: BorderSide(color: borderColor),
+                          ),
+                          leading: icon != null
+                              ? Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(icon, size: 20),
+                                  ],
+                                )
+                              : null,
+                          title: showCompact
+                              ? null
+                              : isCaptainRole
+                                  ? ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 10),
+                                    child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 7, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                              .withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          "Captain",
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.center,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .labelMedium
+                                              ?.copyWith(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .primary,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                        ),
+                                      ),
+                                  )
+                                  : Text(
+                                      role,
+                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                            color: Theme.of(context).colorScheme.onSurface,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                          trailing: showCompact
+                              ? null
+                              : existing == 'Open'
+                                  ? hasError
+                                      ? Text(
+                                          'Error',
+                                          style:
+                                              TextStyle(color: Theme.of(context).colorScheme.error),
+                                        )
+                                      : isBusy
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(strokeWidth: 2),
+                                            )
+                                          : ElevatedButton(
+                                              onPressed:
+                                                  (teamBusy || currentUserId == null)
+                                                      ? null
+                                                      : () => onJoin(role),
+                                              child: Text(
+                                                  userOnAnotherRoleSameTeam ? 'Swap' : 'Join'),
+                                            )
+                                  : Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            ConstrainedBox(
+                                              constraints:
+                                                  const BoxConstraints(maxWidth: 160),
+                                              child: Text(
+                                                memberLabelText,
+                                                overflow: TextOverflow.ellipsis,
+                                                softWrap: false,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodyMedium
+                                                    ?.copyWith(
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .onSurface,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Icon(
+                                              status == 'maybe'
+                                                  ? Icons.help_outline
+                                                  : Icons.check,
+                                              color: statusText(status),
+                                              size: 18,
+                                            ),
+                                          ],
+                                        ),
+                                        if (isSelf)
+                                          Padding(
+                                            padding: const EdgeInsets.only(left: 8),
+                                            child: statusUpdating
+                                                ? const SizedBox(
+                                                    width: 18,
+                                                    height: 18,
+                                                    child: CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                                  )
+                                                : PopupMenuButton<String>(
+                                                    tooltip: 'Update your status',
+                                                    onSelected: (value) =>
+                                                        onUpdateStatus(role, value),
+                                                    itemBuilder: (context) => const [
+                                                      PopupMenuItem<String>(
+                                                        value: 'all_in',
+                                                        child: Text('All in'),
+                                                      ),
+                                                      PopupMenuItem<String>(
+                                                        value: 'maybe',
+                                                        child: Text('Maybe'),
+                                                      ),
+                                                    ],
+                                                    child: Icon(
+                                                      Icons.checklist,
+                                                      color: statusText(status),
+                                                      size: 20,
+                                                    ),
+                                                  ),
+                                          ),
+                                      ],
+                                    ),
+                        );
+
+                        // Captains removing others: allow swipe-to-remove instead of an X button.
+                        if (isCaptain && !isSelf && !isOpenSlot) {
+                          roleTile = Dismissible(
+                            key: ValueKey('kick:${team.teamId}:$role'),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.error.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Icon(Icons.close,
+                                  color: Theme.of(context).colorScheme.error),
+                            ),
+                            confirmDismiss: (_) async {
+                              if (isKicking) return false;
+                              onKick(role, existing);
+                              return false; // keep tile; action handled manually
+                            },
+                            child: roleTile,
+                          );
+                        }
+
+                        return Row(
+                          children: [
+                            if (isSelf)
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                curve: Curves.easeInOut,
+                                width: leaveRevealed ? 120 : 0,
+                                child: leaveRevealed
+                                    ? Padding(
+                                        padding: const EdgeInsets.only(right: 8),
+                                        child: ElevatedButton.icon(
+                                          onPressed: isLeaving ? null : () => onLeave(role),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Theme.of(context)
+                                                .colorScheme
+                                                .errorContainer,
+                                            foregroundColor: Theme.of(context)
+                                                .colorScheme
+                                                .onErrorContainer,
+                                            minimumSize: const Size(120, 40),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 10,
+                                            ),
+                                          ),
+                                          icon: isLeaving
+                                              ? const SizedBox(
+                                                  width: 16,
+                                                  height: 16,
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                  ),
+                                                )
+                                              : const Icon(Icons.logout, size: 18),
+                                          label: const Text('Leave'),
+                                        ),
+                                      )
+                                    : const SizedBox.shrink(),
+                              ),
+                            Expanded(child: roleTile),
+                          ],
+                        );
+                      }),
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              team.displayName ?? team.teamId,
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              formatUpdated,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Refresh team',
-                        onPressed: teamRefreshing ? null : onRefresh,
-                        icon: teamRefreshing
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.refresh),
-                      ),
-                      if (isCaptain)
-                        IconButton(
-                          tooltip: 'Delete team',
-                          onPressed: deleting ? null : onDelete,
-                          icon: deleting
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.delete_outline, color: Colors.red),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(Icons.military_tech, size: 18),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          team.captainDisplayName ?? team.captainSummoner ?? 'Captain',
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: onDeepDive,
-                    icon: const Icon(Icons.analytics_outlined),
-                    label: const Text('Draft deep dive'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ...roleOrder.map((role) {
-                final existing = members[role] ?? 'Open';
-                final icon = roleIcon(role);
-                final isBusy = busyTeamId == team.teamId && busyRole == role;
-                final teamBusy = busyTeamId == team.teamId && busyRole != role;
-                final hasError = roleErrors.contains('${team.teamId}:$role');
-                final isKicking = kickingKey == '${team.teamId}:$role';
-                final isSelf = existing == currentUserId;
-                final userOnAnotherRoleSameTeam = userInThisTeam && existing != currentUserId;
-                final memberLabelText = memberLabel(team, role);
-                final status = existing == 'Open' ? null : memberStatuses[role] ?? 'all_in';
-                final isOpenSlot = existing == 'Open';
-                final statusUpdating = statusUpdatingKey == '${team.teamId}:$role';
-                final tileColor = isOpenSlot ? null : statusBackground(status);
-                final borderColor = isOpenSlot ? Theme.of(context).dividerColor : statusBorder(status);
-                final leaveKey = '${team.teamId}:$role';
-                final leaveRevealed = isSelf && leaveRevealKey == leaveKey;
-                final isLeaving = leaveBusyKey == leaveKey;
-                final showCompact = leaveRevealed;
-
-                return Row(
-                  children: [
-                    if (isSelf)
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeInOut,
-                        width: leaveRevealed ? 120 : 0,
-                        child: leaveRevealed
-                            ? Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: ElevatedButton.icon(
-                                  onPressed: isLeaving ? null : () => onLeave(role),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red.shade100,
-                                    foregroundColor: Colors.red.shade800,
-                                    minimumSize: const Size(120, 40),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 10,
-                                    ),
-                                  ),
-                                  icon: isLeaving
-                                      ? const SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(strokeWidth: 2),
-                                        )
-                                      : const Icon(Icons.logout, size: 18),
-                                  label: const Text('Leave'),
-                                ),
-                              )
-                            : const SizedBox.shrink(),
-                      ),
-                    Expanded(
-                      child: ListTile(
-                        onTap: isSelf ? () => onToggleLeave(leaveKey) : null,
-                        dense: true,
-                        tileColor: tileColor,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        minLeadingWidth: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
-                          side: BorderSide(color: borderColor),
-                        ),
-                        leading: icon != null ? Icon(icon, size: 20) : null,
-                        title: showCompact ? null : Text(role),
-                        subtitle: showCompact
-                            ? null
-                            : isOpenSlot
-                                ? null
-                                : Text(
-                                    status == 'maybe' ? 'Maybe' : 'All in',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: statusText(status),
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                        trailing: showCompact
-                            ? null
-                            : existing == 'Open'
-                                ? hasError
-                                    ? const Text(
-                                        'Error',
-                                        style: TextStyle(color: Colors.red),
-                                      )
-                                    : isBusy
-                                        ? const SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(strokeWidth: 2),
-                                          )
-                                        : ElevatedButton(
-                                            onPressed:
-                                                (teamBusy || currentUserId == null) ? null : () => onJoin(role),
-                                            child: Text(userOnAnotherRoleSameTeam ? 'Swap' : 'Join'),
-                                          )
-                                : Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        crossAxisAlignment: CrossAxisAlignment.end,
-                                        children: [
-                                          Text(memberLabelText),
-                                          const SizedBox(height: 4),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: statusBackground(status),
-                                              border: Border.all(color: statusBorder(status)),
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                            child: Text(
-                                              status == 'maybe' ? 'Maybe' : 'All in',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w700,
-                                                color: statusText(status),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      if (isSelf)
-                                        Padding(
-                                          padding: const EdgeInsets.only(left: 8),
-                                          child: statusUpdating
-                                              ? const SizedBox(
-                                                  width: 18,
-                                                  height: 18,
-                                                  child: CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                  ),
-                                                )
-                                              : PopupMenuButton<String>(
-                                                  tooltip: 'Update your status',
-                                                  onSelected: (value) => onUpdateStatus(role, value),
-                                                  itemBuilder: (context) => const [
-                                                    PopupMenuItem<String>(
-                                                      value: 'all_in',
-                                                      child: Text('All in'),
-                                                    ),
-                                                    PopupMenuItem<String>(
-                                                      value: 'maybe',
-                                                      child: Text('Maybe'),
-                                                    ),
-                                                  ],
-                                                  child: Icon(
-                                                    Icons.checklist,
-                                                    color: statusText(status),
-                                                    size: 20,
-                                                  ),
-                                                ),
-                                        ),
-                                      if (isCaptain && !isSelf && existing != 'Open')
-                                        IconButton(
-                                          tooltip: 'Remove player',
-                                          onPressed: isKicking ? null : () => onKick(role, existing),
-                                          icon: isKicking
-                                              ? const SizedBox(
-                                                  width: 18,
-                                                  height: 18,
-                                                  child: CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                  ),
-                                                )
-                                              : const Icon(Icons.close, color: Colors.red),
-                                        ),
-                                    ],
-                                  ),
-                      ),
-                    ),
-                  ],
-                );
-              }),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
 }
-

@@ -76,7 +76,7 @@ function seed() {
     tournamentId: 'tourn-1',
     themeId: 1,
     nameKey: 'mock_cup',
-    nameKeySecondary: 'mock_secondary',
+    nameKeySecondary: 'Clash Night Mock',
     schedule: [{ registrationTime: reg, startTime: start }],
     startTime: start,
     registrationTime: reg,
@@ -132,13 +132,21 @@ function seed() {
     {
       teamId: 'team-1',
       tournamentId: upcoming.tournamentId,
-      captainSummoner: 'CaptainMock',
+      captainSummoner: 'mock@user', // make mock user the captain
+      createdBy: 'mock@user',
       members: {
-        Top: 'PlayerTop',
+        Top: 'mock@user', // mock user is on the team
         Jungle: 'PlayerJg',
         Mid: 'PlayerMid',
         Bot: 'PlayerBot',
         Support: 'PlayerSup'
+      },
+      memberStatuses: {
+        Top: 'maybe', // show a "Maybe" status on the team card
+        Jungle: 'all_in',
+        Mid: 'all_in',
+        Bot: 'all_in',
+        Support: 'all_in'
       },
       status: 'open'
     },
@@ -152,6 +160,10 @@ function seed() {
         Mid: 'MidPlaceholder',
         Bot: 'Open',
         Support: 'Open'
+      },
+      memberStatuses: {
+        Top: 'all_in',
+        Mid: 'all_in'
       },
       status: 'open'
     }
@@ -300,6 +312,8 @@ router.post('/tournaments/:id/teams', withAuth, (req, res) => {
   }
   const members = (body.members && typeof body.members === 'object') ? body.members : {};
   members[role] = req.user.email;
+  const memberStatuses = { ...(body.memberStatuses || {}) };
+  memberStatuses[role] = 'all_in';
   const teamId = crypto.randomUUID();
   const item = {
     teamId,
@@ -309,6 +323,7 @@ router.post('/tournaments/:id/teams', withAuth, (req, res) => {
     createdBy: req.user.email,
     createdAt: new Date().toISOString(),
     members,
+    memberStatuses,
     status: 'open'
   };
 
@@ -359,8 +374,11 @@ router.post('/tournaments/:id/teams/:teamId/roles/:role', withAuth, (req, res) =
   team.members = team.members || {};
   if (existingRole && existingRole !== roleKey) {
     team.members[existingRole] = 'Open';
+    if (team.memberStatuses) delete team.memberStatuses[existingRole];
   }
   team.members[roleKey] = playerId;
+  team.memberStatuses = team.memberStatuses || {};
+  team.memberStatuses[roleKey] = 'all_in';
   return res.json({ teamId: team.teamId, role: roleKey, playerId, playerDisplayName: displayNameFor(playerId) });
 });
 
@@ -376,6 +394,7 @@ router.delete('/tournaments/:id/teams/:teamId/roles/:role', withAuth, (req, res)
   if (!isCaptain) return res.status(403).json({ message: 'Only captain can remove' });
   if (current === req.user.email) return res.status(400).json({ message: 'captain cannot kick themselves' });
   team.members[roleKey] = 'Open';
+  if (team.memberStatuses) delete team.memberStatuses[roleKey];
   return res.json({ teamId: team.teamId, role: roleKey, removed: current });
 });
 
@@ -386,7 +405,15 @@ router.post('/tournaments/:id/assign', withAuth, (req, res) => {
   });
 });
 
+// Primary mount: match expected prefix + stage (e.g., /api/dev).
 app.use(`${API_PREFIX}${STAGE}`, router);
+
+// Convenience mount: also serve at just the stage (e.g., /dev) so clients
+// that omit the /api prefix (or when using a different base URL) still work.
+// This improves local DX while keeping the prefixed path for parity with prod.
+if (API_PREFIX !== '') {
+  app.use(`${STAGE}`, router);
+}
 
 app.listen(PORT, () => {
   console.log(`Mock API listening on http://localhost:${PORT}${API_PREFIX}${STAGE}`);

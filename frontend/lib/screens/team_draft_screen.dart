@@ -401,7 +401,7 @@ class _TeamDraftScreenState extends State<TeamDraftScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor: isError ? Colors.red : null,
+        backgroundColor: isError ? Theme.of(context).colorScheme.error : null,
       ),
     );
   }
@@ -450,13 +450,13 @@ class _TeamDraftScreenState extends State<TeamDraftScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.red.shade50,
+                  color: theme.colorScheme.errorContainer.withOpacity(0.9),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.shade200),
+                  border: Border.all(color: theme.colorScheme.error.withOpacity(0.35)),
                 ),
                 child: Text(
                   _error!,
-                  style: TextStyle(color: Colors.red.shade800),
+                  style: TextStyle(color: theme.colorScheme.onErrorContainer),
                 ),
               ),
             ],

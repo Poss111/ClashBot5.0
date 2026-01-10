@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/tournaments_service.dart';
 import '../models/tournament.dart';
+import '../theme.dart';
 
 class AdminScreen extends StatefulWidget {
   final String? userEmail;
@@ -386,7 +387,7 @@ class _AdminScreenState extends State<AdminScreen> {
         setState(() {
           saving = false;
           saveLabel = 'Success';
-          saveColor = Colors.green;
+          saveColor = AppBrandColors.success;
           coolDown = true;
           dirty = false;
         });
@@ -515,7 +516,8 @@ class _AdminScreenState extends State<AdminScreen> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: saveColor,
-                  foregroundColor: saveColor != null ? Colors.white : null,
+                  foregroundColor:
+                      saveColor != null ? Theme.of(context).colorScheme.onPrimary : null,
                 ),
                 onPressed: saveDisabled ? null : () => handleSave(setState),
                 child: saving

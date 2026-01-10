@@ -127,4 +127,6 @@ jobs:
           track: internal
           status: completed
           releaseName: ${{ github.event.release.name || github.ref_name }}
+          whatsNewDirectory: frontend/whats_new/
+
 

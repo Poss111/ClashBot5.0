@@ -7,6 +7,7 @@ import '../services/champion_data_service.dart';
 import '../services/teams_service.dart';
 import '../services/tournaments_service.dart';
 import '../services/user_service.dart';
+import '../theme.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? effectiveRole;
@@ -32,6 +33,8 @@ class _SnapshotData {
   final String role;
   final List<_FavoriteDisplay> favorites;
   final bool hasFavorites;
+  final String? mainRole;
+  final String? offRole;
 
   _SnapshotData({
     required this.tournament,
@@ -39,6 +42,8 @@ class _SnapshotData {
     required this.role,
     required this.favorites,
     required this.hasFavorites,
+    required this.mainRole,
+    required this.offRole,
   });
 }
 
@@ -172,6 +177,8 @@ class _HomeScreenState extends State<HomeScreen> {
             role: membership.role,
             favorites: favorites,
             hasFavorites: hasFavorites,
+            mainRole: profile.mainRole,
+            offRole: profile.offRole,
           );
         } else {
           _snapshot = null;
@@ -189,6 +196,15 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }
+  }
+
+  String? _preferenceLabelForRole(String role) {
+    final snap = _snapshot;
+    if (snap == null) return null;
+    final lower = role.toLowerCase();
+    if ((snap.mainRole ?? '').toLowerCase() == lower) return 'Main role';
+    if ((snap.offRole ?? '').toLowerCase() == lower) return 'Off role';
+    return null;
   }
 
   DateTime? _safeParse(String? iso) {
@@ -475,29 +491,122 @@ class _HomeScreenState extends State<HomeScreen> {
               style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _roleOrder.map((role) {
-                final label = _memberLabel(snapshot.team, role);
-                final isSelf = _resolvedUserId != null &&
-                    (snapshot.team.members?[role]?.toLowerCase() == _resolvedUserId?.toLowerCase());
-                return Chip(
-                  avatar: CircleAvatar(
-                    backgroundColor: isSelf ? theme.colorScheme.primary : theme.colorScheme.surfaceVariant,
-                    child: Text(
-                      role[0],
-                      style: TextStyle(
-                        color: isSelf ? theme.colorScheme.onPrimary : theme.colorScheme.onSurfaceVariant,
-                      ),
+        ListView.separated(
+          itemCount: _roleOrder.length,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          separatorBuilder: (_, __) => const SizedBox(height: 6),
+          itemBuilder: (context, index) {
+            final role = _roleOrder[index];
+            final label = _memberLabel(snapshot.team, role);
+            final isSelf = _resolvedUserId != null &&
+                (snapshot.team.members?[role]?.toLowerCase() == _resolvedUserId?.toLowerCase());
+            final isOpen = label == 'Open';
+            final rawStatus = snapshot.team.memberStatuses?[role]?.toLowerCase() ?? '';
+            final isAllIn = rawStatus == 'all_in';
+            final isMaybe = rawStatus == 'maybe';
+            final statusLabel = isOpen
+                ? 'Open'
+                : isAllIn
+                    ? 'All in'
+                    : isMaybe
+                        ? 'Maybe'
+                        : 'Unknown';
+            final statusColor = isOpen
+                ? theme.colorScheme.outline
+                : isAllIn
+                    ? AppBrandColors.success
+                    : isMaybe
+                        ? AppBrandColors.warning
+                        : theme.colorScheme.onSurfaceVariant;
+
+            return Material(
+              color: isOpen
+                  ? theme.colorScheme.surfaceVariant.withOpacity(0.35)
+                  : theme.cardColor,
+              borderRadius: BorderRadius.circular(12),
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                leading: CircleAvatar(
+                  radius: 18,
+                  backgroundColor: isSelf
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.surfaceVariant,
+                  child: Text(
+                    role[0],
+                    style: TextStyle(
+                      color: isSelf
+                          ? theme.colorScheme.onPrimary
+                          : theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  label: Text('$role: $label'),
-                  backgroundColor:
-                      label == 'Open' ? theme.colorScheme.surfaceVariant.withOpacity(0.6) : null,
-                );
-              }).toList(),
-            ),
+                ),
+                title: Text(
+                  role,
+                  style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      label,
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            statusLabel,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                                  color: statusColor,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        ),
+                        const Spacer(),
+                        if (isSelf)
+                          Builder(
+                            builder: (_) {
+                              final pref = _preferenceLabelForRole(role);
+                              if (pref == null) return const SizedBox.shrink();
+                              final prefColor = theme.colorScheme.primary;
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: prefColor.withOpacity(0.10),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  pref,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                        color: prefColor,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                ),
+                              );
+                            },
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: theme.dividerColor.withOpacity(0.6)),
+                ),
+              ),
+            );
+          },
+        ),
             if (widget.navEnabled) ...[
               const SizedBox(height: 12),
               Wrap(
@@ -623,10 +732,10 @@ class _HomeScreenState extends State<HomeScreen> {
         double childAspectRatio = 2.6;
         if (constraints.maxWidth < 600) {
           crossAxisCount = 1;
-          childAspectRatio = 0.9; // give cards more height on narrow screens
+          childAspectRatio = 4; // give cards more height on narrow screens
         } else if (constraints.maxWidth < 900) {
           crossAxisCount = 2;
-          childAspectRatio = 1.6;
+          childAspectRatio = 4;
         }
 
         return GridView.builder(

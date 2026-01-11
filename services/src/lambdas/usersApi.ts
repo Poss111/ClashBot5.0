@@ -15,6 +15,8 @@ type UserRecord = {
   createdAt?: string;
   lastLogin?: string;
   favoriteChampions?: Record<string, string[]>;
+  mainRole?: string;
+  offRole?: string;
 };
 
 const USERS_TABLE = process.env.USERS_TABLE;
@@ -87,6 +89,12 @@ const baseHandler = async (event: any) => {
     return Object.keys(result).length === 0 ? null : result;
   };
 
+  const rolesFromRecord = (item: UserRecord | undefined) => {
+    const main = normalizeRole(item?.mainRole);
+    const off = normalizeRole(item?.offRole);
+    return { mainRole: main, offRole: off && off !== main ? off : null };
+  };
+
   try {
     // GET /users/me
     if (method === 'GET') {
@@ -97,7 +105,8 @@ const baseHandler = async (event: any) => {
         })
       );
       const item = (existing.Item as UserRecord | undefined) ?? { userId };
-    const favoriteChampions = coerceFavoriteChampions(item.favoriteChampions) ?? item.favoriteChampions ?? null;
+      const favoriteChampions = coerceFavoriteChampions(item.favoriteChampions) ?? item.favoriteChampions ?? null;
+      const { mainRole, offRole } = rolesFromRecord(item);
       const response = {
         userId: item.userId,
         email: item.email ?? item.userId,
@@ -105,7 +114,9 @@ const baseHandler = async (event: any) => {
         name: item.name ?? null,
         picture: item.picture ?? null,
         role: item.role ?? null,
-      favoriteChampions,
+        mainRole,
+        offRole,
+        favoriteChampions,
         createdAt: item.createdAt ?? null,
         lastLogin: item.lastLogin ?? null
       };
@@ -146,6 +157,7 @@ const baseHandler = async (event: any) => {
 
       logInfo('usersApi.displayNameUpdated', { userId });
       const favoriteChampions = coerceFavoriteChampions(item.favoriteChampions) ?? item.favoriteChampions ?? null;
+      const { mainRole, offRole } = rolesFromRecord(item);
       return jsonResponse(200, {
         userId,
         email: item.email ?? userId,
@@ -153,6 +165,8 @@ const baseHandler = async (event: any) => {
         name: item.name ?? null,
         picture: item.picture ?? null,
         role: item.role ?? null,
+        mainRole,
+        offRole,
         favoriteChampions,
         createdAt: item.createdAt ?? nowIso,
         lastLogin: item.lastLogin ?? nowIso
@@ -191,6 +205,7 @@ const baseHandler = async (event: any) => {
       );
 
       logInfo('usersApi.favoriteChampionsUpdated', { userId, roles: Object.keys(desired) });
+      const { mainRole, offRole } = rolesFromRecord(item);
       return jsonResponse(200, {
         userId,
         email: item.email ?? userId,
@@ -198,7 +213,62 @@ const baseHandler = async (event: any) => {
         name: item.name ?? null,
         picture: item.picture ?? null,
         role: item.role ?? null,
+        mainRole,
+        offRole,
         favoriteChampions: desired,
+        createdAt: item.createdAt ?? nowIso,
+        lastLogin: item.lastLogin ?? nowIso
+      });
+    }
+
+    // PUT /users/me/roles
+    if (method === 'PUT' && path.includes('/roles')) {
+      const body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+      const desiredMain = normalizeRole(body?.mainRole as string | undefined);
+      const desiredOff = normalizeRole(body?.offRole as string | undefined);
+      if (!desiredMain) {
+        return jsonResponse(400, { message: 'mainRole is required and must be a valid role' });
+      }
+      if (desiredOff && desiredOff === desiredMain) {
+        return jsonResponse(400, { message: 'offRole must be different from mainRole' });
+      }
+
+      const existing = await docClient.send(
+        new GetCommand({
+          TableName: USERS_TABLE,
+          Key: { userId }
+        })
+      );
+      const item = (existing.Item as UserRecord | undefined) ?? { userId };
+      const nowIso = new Date().toISOString();
+
+      await docClient.send(
+        new PutCommand({
+          TableName: USERS_TABLE,
+          Item: {
+            ...item,
+            userId,
+            email: item.email ?? item.userId,
+            mainRole: desiredMain,
+            offRole: desiredOff ?? null,
+            lastLogin: item.lastLogin ?? nowIso,
+            createdAt: item.createdAt ?? nowIso
+          }
+        })
+      );
+
+      logInfo('usersApi.rolesUpdated', { userId, mainRole: desiredMain, offRole: desiredOff ?? null });
+      const favoriteChampions = coerceFavoriteChampions(item.favoriteChampions) ?? item.favoriteChampions ?? null;
+      return jsonResponse(200, {
+        userId,
+        email: item.email ?? userId,
+        displayName: item.displayName ?? item.name ?? null,
+        name: item.name ?? null,
+        picture: item.picture ?? null,
+        role: item.role ?? null,
+        mainRole: desiredMain,
+        offRole: desiredOff ?? null,
+        favoriteChampions,
         createdAt: item.createdAt ?? nowIso,
         lastLogin: item.lastLogin ?? nowIso
       });
@@ -219,6 +289,7 @@ export const handler = withApiMetrics({
     if (method === 'GET') return 'user.me';
     if (method === 'PUT' && path.includes('/display-name')) return 'user.displayName';
     if (method === 'PUT' && path.includes('/favorite-champions')) return 'user.favoriteChampions';
+    if (method === 'PUT' && path.includes('/roles')) return 'user.roles';
     return undefined;
   }
 })(baseHandler);

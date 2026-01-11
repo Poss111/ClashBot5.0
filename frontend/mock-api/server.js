@@ -34,6 +34,11 @@ function ensureUser(userId, displayName) {
       userId,
       email: userId,
       displayName: displayName || 'Mock Player',
+      favoriteChampions: {
+        Top: ['Aatrox', 'Volibear'],
+      },
+      mainRole: 'Top',
+      offRole: 'Jungle',
       lastLogin: new Date().toISOString(),
       createdAt: new Date().toISOString()
     });
@@ -43,6 +48,14 @@ function ensureUser(userId, displayName) {
     existing.displayName = displayName.trim();
   }
   return existing;
+}
+
+function normalizeRole(value) {
+  if (!value) return null;
+  const trimmed = String(value).trim().toLowerCase();
+  const allowed = ['top', 'jungle', 'mid', 'bot', 'support'];
+  if (!allowed.includes(trimmed)) return null;
+  return trimmed[0].toUpperCase() + trimmed.slice(1);
 }
 
 function displayNameFor(userId) {
@@ -206,6 +219,9 @@ router.get('/users/me', withAuth, (req, res) => {
     name: profile.displayName,
     createdAt: profile.createdAt,
     lastLogin: profile.lastLogin,
+    favoriteChampions: profile.favoriteChampions,
+    mainRole: profile.mainRole ?? null,
+    offRole: profile.offRole ?? null,
     role: 'GENERAL_USER'
   });
 });
@@ -225,6 +241,36 @@ router.put('/users/me/display-name', withAuth, (req, res) => {
     name: profile.displayName,
     createdAt: profile.createdAt,
     lastLogin: new Date().toISOString(),
+    mainRole: profile.mainRole ?? null,
+    offRole: profile.offRole ?? null,
+    role: 'GENERAL_USER'
+  });
+});
+
+router.put('/users/me/roles', withAuth, (req, res) => {
+  if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+  const mainRole = normalizeRole(req.body?.mainRole);
+  const offRoleRaw = normalizeRole(req.body?.offRole);
+  if (!mainRole) {
+    return res.status(400).json({ message: 'mainRole is required and must be valid' });
+  }
+  if (offRoleRaw && offRoleRaw === mainRole) {
+    return res.status(400).json({ message: 'offRole must be different from mainRole' });
+  }
+  const profile = ensureUser(req.user.email, req.user.displayName);
+  profile.mainRole = mainRole;
+  profile.offRole = offRoleRaw && offRoleRaw !== mainRole ? offRoleRaw : null;
+  profile.lastLogin = new Date().toISOString();
+  return res.json({
+    userId: profile.userId,
+    email: profile.email,
+    displayName: profile.displayName,
+    name: profile.displayName,
+    createdAt: profile.createdAt,
+    lastLogin: profile.lastLogin,
+    favoriteChampions: profile.favoriteChampions,
+    mainRole: profile.mainRole,
+    offRole: profile.offRole,
     role: 'GENERAL_USER'
   });
 });

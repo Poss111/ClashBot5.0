@@ -1,4 +1,4 @@
-package com.poss.clash.companion
+package com.poss.clash.debug
 
 import io.flutter.embedding.android.FlutterActivity
 

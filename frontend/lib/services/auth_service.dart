@@ -29,7 +29,8 @@ class AuthService {
 
   static const String _env = String.fromEnvironment('APP_ENV', defaultValue: 'prod');
   // Google OAuth client ID (web); used as serverClientId on mobile per google_sign_in_android guidance.
-  static const String webClientId = "870493288034-645v0rnvn0djspbue6fi3oovbosa1hht.apps.googleusercontent.com";
+  // static const String webClientId = "870493288034-645v0rnvn0djspbue6fi3oovbosa1hht.apps.googleusercontent.com";
+  static const String webClientId = "443293502674-kd26de723a7h6jrfffhprfnmnv7nv0k1.apps.googleusercontent.com";
 
   GoogleSignIn? _googleSignIn;
   GoogleSignInAccount? currentUser;

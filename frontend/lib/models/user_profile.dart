@@ -5,6 +5,8 @@ class UserProfile {
   final String? name;
   final String? picture;
   final String? role;
+  final String? mainRole;
+  final String? offRole;
   final Map<String, List<String>>? favoriteChampions;
 
   UserProfile({
@@ -14,6 +16,8 @@ class UserProfile {
     this.name,
     this.picture,
     this.role,
+    this.mainRole,
+    this.offRole,
     this.favoriteChampions,
   });
 
@@ -25,6 +29,8 @@ class UserProfile {
       name: json['name'] as String?,
       picture: json['picture'] as String?,
       role: json['role'] as String?,
+      mainRole: json['mainRole'] as String?,
+      offRole: json['offRole'] as String?,
       favoriteChampions: (json['favoriteChampions'] as Map<String, dynamic>?)?.map(
         (k, v) {
           final list = v is List ? v.map((e) => e?.toString() ?? '').where((e) => e.isNotEmpty).toList() : <String>[];

@@ -22,10 +22,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late final TextEditingController _nameController;
   bool _saving = false;
   bool _favoritesSaving = false;
+  bool _rolesSaving = false;
   bool _loadingProfile = false;
   String? _error;
   String? _success;
   Map<String, List<String>> _favoriteChampions = {};
+  String? _mainRole;
+  String? _offRole;
   late Future<List<Champion>> _championsFuture;
 
   @override
@@ -95,6 +98,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           favs[k] = v.where((e) => e.isNotEmpty).take(3).toList();
         });
         _favoriteChampions = favs;
+        _mainRole = profile.mainRole;
+        _offRole = profile.offRole;
         if ((_nameController.text.trim().isEmpty) && (profile.displayName?.trim().isNotEmpty ?? false)) {
           _nameController.text = profile.displayName!.trim();
         }
@@ -143,6 +148,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } finally {
       if (mounted) {
         setState(() => _favoritesSaving = false);
+      }
+    }
+  }
+
+  Future<void> _saveRoles() async {
+    final currentFocus = FocusScope.of(context);
+    if (currentFocus.hasFocus) currentFocus.unfocus();
+    setState(() {
+      _error = null;
+      _success = null;
+    });
+    final main = _mainRole;
+    final off = _offRole;
+    if (main == null || main.isEmpty) {
+      setState(() {
+        _error = 'Select a main role';
+      });
+      return;
+    }
+    if (off != null && off.isNotEmpty && off == main) {
+      setState(() {
+        _error = 'Main and off roles must be different';
+      });
+      return;
+    }
+    setState(() => _rolesSaving = true);
+    try {
+      final result = await _userService.setPreferredRoles(mainRole: main, offRole: off);
+      if (!mounted) return;
+      setState(() {
+        _mainRole = result.mainRole ?? main;
+        _offRole = result.offRole;
+        _success = 'Preferred roles updated';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Failed to save roles: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _rolesSaving = false);
       }
     }
   }
@@ -294,6 +341,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     )
                   : const Icon(Icons.save),
               label: Text(_saving ? 'Saving...' : 'Save'),
+            ),
+            const SizedBox(height: 32),
+            Text('Preferred roles', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: _mainRole,
+              decoration: const InputDecoration(labelText: 'Main role'),
+              items: _roleOrder
+                  .map(
+                    (role) => DropdownMenuItem(
+                      value: role,
+                      child: Text(role),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                setState(() {
+                  _mainRole = value;
+                  if (_offRole != null && _offRole == value) {
+                    _offRole = null;
+                  }
+                });
+              },
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String?>(
+              value: _offRole,
+              decoration: const InputDecoration(labelText: 'Off role (optional)'),
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('None'),
+                ),
+                ..._roleOrder
+                    .where((role) => role != _mainRole)
+                    .map(
+                      (role) => DropdownMenuItem<String?>(
+                        value: role,
+                        child: Text(role),
+                      ),
+                    )
+                    .toList(),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  _offRole = value == _mainRole ? null : value;
+                });
+              },
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Choose exactly one main role and an optional off role. They must be different.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: _rolesSaving ? null : _saveRoles,
+              icon: _rolesSaving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.shield),
+              label: Text(_rolesSaving ? 'Saving...' : 'Save roles'),
             ),
             const SizedBox(height: 32),
             Row(
